@@ -1103,9 +1103,10 @@ DATOS_FICTICIOS_ALERTAS = [
 ]
 
 
+_RUTA_FAVICON = "favicon.png"
 st.set_page_config(
-    page_title="Portafolio BI · TFM",
-    page_icon="📊",
+    page_title="Portafolio BI · Gestión de proyectos",
+    page_icon=_RUTA_FAVICON if os.path.exists(_RUTA_FAVICON) else "📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -1185,7 +1186,12 @@ def aplicar_tema(modo):
 
 def selector_tema(key):
     """Interruptor de apariencia. Al cambiar, recarga la app con el tema nuevo."""
-    claro = st.toggle("Modo claro", value=st.session_state["tema"] == "Claro", key=key)
+    claro = st.toggle(
+        "Modo claro",
+        value=st.session_state["tema"] == "Claro",
+        key=key,
+        help="Cambia entre la vista oscura y la clara.",
+    )
     nuevo = "Claro" if claro else "Oscuro"
     if nuevo != st.session_state["tema"]:
         st.session_state["tema"] = nuevo
@@ -1205,6 +1211,21 @@ st.markdown(
 )
 st.markdown("""
 <style>
+/* Marca de la plataforma */
+.logo-row { display: flex; align-items: center; gap: 11px; margin-bottom: 4px; }
+.logo-mark {
+    flex-shrink: 0;
+    width: 38px; height: 38px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #2FBF71, #35A7E0);
+    color: #071233;
+    font-weight: 800; font-size: 0.92rem; letter-spacing: .5px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(53,167,224,0.35);
+}
+.logo-title { font-weight: 800; font-size: 1.22rem; color: var(--texto-fuerte); line-height: 1.15; }
+.logo-sub { font-size: 0.72rem; color: var(--texto-suave); margin-top: 1px; }
+
 /* Encabezado principal con banda de color */
 .banner {
     background: linear-gradient(90deg, #16255F 0%, #1E3C8F 60%, #2853B4 100%);
@@ -1607,9 +1628,12 @@ if "rol" not in st.session_state:
     with col_tema_login:
         selector_tema("tema_login")
     st.markdown("""
-    <div class="banner">
-        <h1>Portafolio BI · Acceso</h1>
-        <p>Selecciona tu perfil para entrar a la plataforma.</p>
+    <div class="banner" style="display:flex;align-items:center;gap:16px;">
+        <div class="logo-mark" style="width:48px;height:48px;font-size:1.1rem;border-radius:13px;">PB</div>
+        <div>
+            <h1>Portafolio BI · Acceso</h1>
+            <p>Selecciona tu perfil para entrar a la plataforma.</p>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1662,8 +1686,12 @@ if not es_pm and id_usuario not in df_colaboradores["ID_Colaborador"].astype(str
 # NAVEGACIÓN LATERAL
 # =========================================================
 with st.sidebar:
-    st.markdown("## Portafolio BI")
-    st.caption("Gestión simplificada de proyectos y talento humano · TFM VIU")
+    st.markdown(
+        '<div class="logo-row"><div class="logo-mark">PB</div>'
+        '<div><div class="logo-title">Portafolio BI</div>'
+        '<div class="logo-sub">Gestión de proyectos y talento humano</div></div></div>',
+        unsafe_allow_html=True,
+    )
     selector_tema("tema_sidebar")
     if es_pm:
         st.markdown("**Sesión:** Project Manager")
@@ -1695,6 +1723,20 @@ with st.sidebar:
         st.markdown("3 · Mi registro semanal")
     st.divider()
     st.caption(f"Fuente de datos: {ARCHIVO_EXCEL}")
+    st.caption(
+        f"{len(df_proyectos)} proyectos · {len(df_colaboradores)} colaboradores · "
+        f"{len(df_tareas)} tareas · {len(df_riesgos)} riesgos"
+    )
+    if es_pm and os.path.exists(ARCHIVO_EXCEL):
+        with open(ARCHIVO_EXCEL, "rb") as _f:
+            st.download_button(
+                "Descargar base de datos (Excel)",
+                _f.read(),
+                file_name=ARCHIVO_EXCEL,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                help="El mismo archivo que alimenta el tablero directivo en Power BI.",
+            )
     if es_pm:
         with st.expander("Mantenimiento"):
             if st.button("Reiniciar sistema"):
@@ -1715,6 +1757,21 @@ if modulo.startswith("Inicio"):
         <p>Vista general del estado del portafolio y la salud del equipo</p>
     </div>
     """, unsafe_allow_html=True)
+
+    with st.expander("¿Cómo usar la plataforma? · Guía rápida"):
+        st.markdown("""
+- **Inicio / Resumen** — panorama del portafolio: estado, avance y presupuesto de cada proyecto.
+- **1 · Proyectos** — registra y actualiza los proyectos: fechas, presupuesto, avance y estado.
+- **2 · Colaboradores** — administra el equipo, sus roles y sus asignaciones a proyectos.
+- **3 · Monitor de Salud** — supervisa la saturación semanal del equipo; cada colaborador reporta sus horas y su carga desde su propio acceso.
+- **4 · Presupuesto detallado** — define las partidas por rubro y registra los gastos reales contra ellas.
+- **5 · Tareas e hitos** — controla el cronograma: qué venció, qué vence pronto y qué se completó.
+- **6 · Riesgos** — inventario de riesgos por proyecto con matriz de probabilidad × impacto.
+
+Todo lo que se captura se guarda al instante y alimenta el tablero directivo en Power BI.
+Las situaciones que requieren atención (sobrecarga del equipo, sobrecostos, retrasos o riesgos
+altos) quedan registradas automáticamente para su seguimiento y notificación.
+""")
 
     total = len(df_proyectos)
     en_curso = int((df_proyectos["Estado_Proyecto"] == "En curso").sum()) if total else 0
