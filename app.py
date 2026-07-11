@@ -1111,8 +1111,98 @@ st.set_page_config(
 )
 
 # =========================================================
+# TEMA VISUAL: OSCURO (AZUL NOCHE) / CLARO
+# =========================================================
+# Opciones del tema nativo de Streamlit (controla fondo, widgets y tablas).
+TEMAS_STREAMLIT = {
+    "Oscuro": {
+        "theme.base": "dark",
+        "theme.primaryColor": "#4EE28E",
+        "theme.backgroundColor": "#101A47",
+        "theme.secondaryBackgroundColor": "#182456",
+        "theme.textColor": "#F2F6FF",
+    },
+    "Claro": {
+        "theme.base": "light",
+        "theme.primaryColor": "#1FA05F",
+        "theme.backgroundColor": "#F4F7FE",
+        "theme.secondaryBackgroundColor": "#E9EFFB",
+        "theme.textColor": "#16255F",
+    },
+}
+
+# Variables CSS que consumen los estilos personalizados de más abajo.
+PALETAS_CSS = {
+    "Oscuro": {
+        "panel-1": "#1B2A66", "panel-2": "#16214F", "panel-borde": "#2B3A75",
+        "form-1": "#1A2557", "form-2": "#141E4A",
+        "sidebar-1": "#0E1840", "sidebar-2": "#131F52",
+        "texto-fuerte": "#FFFFFF", "texto-suave": "#93A5D6", "texto-etiqueta": "#C7D4F2",
+        "acento-etiqueta": "#4EE28E",
+        "celeste": "#8AD8F8", "celeste-bg": "rgba(138,216,248,0.16)",
+        "verde": "#6FEBA8", "verde-vivo": "#4EE28E", "verde-bg": "rgba(78,226,142,0.16)",
+        "rojo": "#FF8FA6", "rojo-vivo": "#FF5470", "rojo-valor": "#FF6B87",
+        "rojo-bg": "rgba(255,84,112,0.18)",
+        "ambar": "#FFD37A", "ambar-vivo": "#FFC857", "ambar-bg": "rgba(255,200,87,0.16)",
+        "oliva": "#E3D96B", "oliva-bg": "rgba(227,217,107,0.16)",
+        "neutro": "#AAB9E4", "neutro-bg": "rgba(159,176,222,0.14)",
+        "focus-texto": "#F0DCA8", "focus-strong": "#FFD98A",
+        "input-borde": "#33468C", "divisor": "#24336E", "pista": "#1C2A63",
+        "sombra": "rgba(4,9,34,0.45)", "sombra-suave": "rgba(4,9,34,0.40)",
+    },
+    "Claro": {
+        "panel-1": "#FFFFFF", "panel-2": "#F4F7FD", "panel-borde": "#D8E0F2",
+        "form-1": "#FFFFFF", "form-2": "#F6F8FE",
+        "sidebar-1": "#FFFFFF", "sidebar-2": "#EDF2FB",
+        "texto-fuerte": "#16255F", "texto-suave": "#5B6C9E", "texto-etiqueta": "#3A4A7E",
+        "acento-etiqueta": "#0F8A52",
+        "celeste": "#1D6FA8", "celeste-bg": "rgba(29,111,168,0.12)",
+        "verde": "#0F8A52", "verde-vivo": "#1FA05F", "verde-bg": "rgba(31,160,95,0.14)",
+        "rojo": "#C22945", "rojo-vivo": "#E23A5C", "rojo-valor": "#C22945",
+        "rojo-bg": "rgba(226,58,92,0.12)",
+        "ambar": "#9A6A00", "ambar-vivo": "#E09B2D", "ambar-bg": "rgba(224,155,45,0.16)",
+        "oliva": "#837A18", "oliva-bg": "rgba(131,122,24,0.14)",
+        "neutro": "#66739B", "neutro-bg": "rgba(102,115,155,0.12)",
+        "focus-texto": "#6E5A17", "focus-strong": "#8A6D0F",
+        "input-borde": "#C2CFEA", "divisor": "#D8E0F2", "pista": "#E2E9F8",
+        "sombra": "rgba(22,37,95,0.12)", "sombra-suave": "rgba(22,37,95,0.08)",
+    },
+}
+
+if "tema" not in st.session_state:
+    # La sesión hereda el tema que esté activo en el servidor para que la
+    # paleta CSS y los widgets nativos siempre coincidan.
+    st.session_state["tema"] = (
+        "Claro" if st._config.get_option("theme.base") == "light" else "Oscuro"
+    )
+
+
+def aplicar_tema(modo):
+    for opcion, valor in TEMAS_STREAMLIT[modo].items():
+        if st._config.get_option(opcion) != valor:
+            st._config.set_option(opcion, valor)
+
+
+def selector_tema(key):
+    """Interruptor de apariencia. Al cambiar, recarga la app con el tema nuevo."""
+    claro = st.toggle("Modo claro", value=st.session_state["tema"] == "Claro", key=key)
+    nuevo = "Claro" if claro else "Oscuro"
+    if nuevo != st.session_state["tema"]:
+        st.session_state["tema"] = nuevo
+        aplicar_tema(nuevo)
+        st.rerun()
+
+
+aplicar_tema(st.session_state["tema"])
+
+# =========================================================
 # ESTILOS PERSONALIZADOS (CSS)
 # =========================================================
+_paleta_activa = PALETAS_CSS[st.session_state["tema"]]
+st.markdown(
+    "<style>:root{" + "".join(f"--{n}:{v};" for n, v in _paleta_activa.items()) + "}</style>",
+    unsafe_allow_html=True,
+)
 st.markdown("""
 <style>
 /* Encabezado principal con banda de color */
@@ -1129,49 +1219,49 @@ st.markdown("""
 
 /* Tarjetas de métricas */
 .metric-card {
-    background: linear-gradient(180deg, #1B2A66 0%, #16214F 100%);
-    border: 1px solid #2B3A75;
-    border-left: 5px solid #8AD8F8;
+    background: linear-gradient(180deg, var(--panel-1) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--panel-borde);
+    border-left: 5px solid var(--celeste);
     border-radius: 10px;
     padding: 14px 18px;
-    box-shadow: 0 4px 16px rgba(4, 9, 34, 0.45);
+    box-shadow: 0 4px 16px var(--sombra);
 }
 .metric-card .label {
-    color: #4EE28E; font-size: 0.8rem; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--acento-etiqueta); font-size: 0.8rem; text-transform: uppercase; letter-spacing: .5px;
     overflow-wrap: normal; word-break: normal; hyphens: none;
 }
 .metric-card .value {
-    color: #FFFFFF; font-size: 1.7rem; font-weight: 700; margin-top: 2px;
+    color: var(--texto-fuerte); font-size: 1.7rem; font-weight: 700; margin-top: 2px;
     white-space: nowrap; overflow-wrap: normal; word-break: normal;
 }
-.metric-card.ok { border-left-color: #4EE28E; }
-.metric-card.warn { border-left-color: #FFC857; }
-.metric-card.risk { border-left-color: #FF5470; }
-.metric-card.risk .value { color: #FF6B87; }
+.metric-card.ok { border-left-color: var(--verde-vivo); }
+.metric-card.warn { border-left-color: var(--ambar-vivo); }
+.metric-card.risk { border-left-color: var(--rojo-vivo); }
+.metric-card.risk .value { color: var(--rojo-valor); }
 
 /* Badges de estado */
 .badge { padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; }
-.badge-curso { background: rgba(138,216,248,0.16); color: #8AD8F8; }
-.badge-riesgo { background: rgba(255,84,112,0.18); color: #FF8FA6; }
-.badge-fin { background: rgba(78,226,142,0.16); color: #6FEBA8; }
-.badge-noini { background: rgba(159,176,222,0.14); color: #AAB9E4; }
-.badge-carga-libre { background: rgba(159,176,222,0.14); color: #AAB9E4; }
-.badge-carga-normal { background: rgba(78,226,142,0.16); color: #6FEBA8; }
-.badge-carga-alta { background: rgba(255,84,112,0.18); color: #FF8FA6; }
+.badge-curso { background: var(--celeste-bg); color: var(--celeste); }
+.badge-riesgo { background: var(--rojo-bg); color: var(--rojo); }
+.badge-fin { background: var(--verde-bg); color: var(--verde); }
+.badge-noini { background: var(--neutro-bg); color: var(--neutro); }
+.badge-carga-libre { background: var(--neutro-bg); color: var(--neutro); }
+.badge-carga-normal { background: var(--verde-bg); color: var(--verde); }
+.badge-carga-alta { background: var(--rojo-bg); color: var(--rojo); }
 
 /* Callout de foco temático (conexión con el Monitor de Salud) */
 .focus-callout {
     background: linear-gradient(135deg, rgba(255,200,87,0.12) 0%, rgba(255,200,87,0.05) 100%);
     border: 1px solid rgba(255,200,87,0.35);
-    border-left: 5px solid #FFC857;
+    border-left: 5px solid var(--ambar-vivo);
     border-radius: 12px;
     padding: 14px 20px;
     margin-bottom: 20px;
     font-size: 0.9rem;
     line-height: 1.5;
-    color: #F0DCA8;
+    color: var(--focus-texto);
 }
-.focus-callout strong { color: #FFD98A; }
+.focus-callout strong { color: var(--focus-strong); }
 
 /* Avatar circular con iniciales para tarjetas de colaboradores */
 .avatar-circle {
@@ -1187,13 +1277,13 @@ st.markdown("""
 .avatar-circle.warn { background: linear-gradient(135deg, #D9922B, #FFC857); }
 
 /* Semáforo de saturación (Monitor de Salud) */
-.badge-sat-ok { background: rgba(78,226,142,0.16); color: #6FEBA8; }
-.badge-sat-watch { background: rgba(227,217,107,0.16); color: #E3D96B; }
-.badge-sat-warn { background: rgba(255,200,87,0.18); color: #FFD37A; }
-.badge-sat-crit { background: rgba(255,84,112,0.18); color: #FF8FA6; }
-.badge-sat-sub { background: rgba(159,176,222,0.14); color: #AAB9E4; }
+.badge-sat-ok { background: var(--verde-bg); color: var(--verde); }
+.badge-sat-watch { background: var(--oliva-bg); color: var(--oliva); }
+.badge-sat-warn { background: var(--ambar-bg); color: var(--ambar); }
+.badge-sat-crit { background: var(--rojo-bg); color: var(--rojo); }
+.badge-sat-sub { background: var(--neutro-bg); color: var(--neutro); }
 .sat-track {
-    background: #1C2A63;
+    background: var(--pista);
     border-radius: 8px;
     height: 10px;
     width: 100%;
@@ -1221,11 +1311,11 @@ st.markdown("""
    FORMULARIO DE CAPTURA — estilo "tarjeta premium"
    ===================================================== */
 div[data-testid="stForm"] {
-    background: linear-gradient(180deg, #1A2557 0%, #141E4A 100%);
-    border: 1px solid #2B3A75;
+    background: linear-gradient(180deg, var(--form-1) 0%, var(--form-2) 100%);
+    border: 1px solid var(--panel-borde);
     border-radius: 18px;
     padding: 30px 34px 22px 34px;
-    box-shadow: 0 10px 30px rgba(4,9,34,0.45);
+    box-shadow: 0 10px 30px var(--sombra);
 }
 
 /* Encabezados de sección dentro del formulario */
@@ -1235,12 +1325,14 @@ div[data-testid="stForm"] {
     gap: 12px;
     margin: 22px 0 16px 0;
     padding-bottom: 10px;
-    border-bottom: 2px solid #24336E;
+    border-bottom: 2px solid var(--divisor);
 }
 .form-section-header:first-of-type { margin-top: 2px; }
 .form-section-header .icon {
     flex-shrink: 0;
-    font-size: 1.15rem;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: .5px;
     background: linear-gradient(135deg, #2FBF71, #35A7E0);
     color: white;
     width: 36px; height: 36px;
@@ -1250,12 +1342,12 @@ div[data-testid="stForm"] {
 }
 .form-section-header .title {
     font-weight: 700;
-    color: #FFFFFF;
+    color: var(--texto-fuerte);
     font-size: 1.02rem;
     line-height: 1.2;
 }
 .form-section-header .subtitle {
-    color: #93A5D6;
+    color: var(--texto-suave);
     font-size: 0.8rem;
     margin-top: 1px;
 }
@@ -1266,18 +1358,18 @@ div[data-testid="stNumberInput"] input,
 div[data-testid="stDateInput"] input,
 div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
     border-radius: 10px !important;
-    border: 1.5px solid #33468C !important;
+    border: 1.5px solid var(--input-borde) !important;
     transition: border-color .15s ease, box-shadow .15s ease;
 }
 div[data-testid="stTextInput"] input:focus,
 div[data-testid="stNumberInput"] input:focus,
 div[data-testid="stDateInput"] input:focus {
-    border-color: #4EE28E !important;
-    box-shadow: 0 0 0 3px rgba(78,226,142,0.18) !important;
+    border-color: var(--verde-vivo) !important;
+    box-shadow: 0 0 0 3px var(--verde-bg) !important;
 }
 div[data-testid="stWidgetLabel"] p {
     font-weight: 600 !important;
-    color: #C7D4F2 !important;
+    color: var(--texto-etiqueta) !important;
     font-size: 0.86rem !important;
 }
 
@@ -1300,19 +1392,19 @@ div[data-testid="stWidgetLabel"] p {
 
 /* Mini-tarjetas de resumen rápido */
 .mini-stat {
-    background: linear-gradient(180deg, #1B2A66 0%, #16214F 100%);
-    border: 1px solid #2B3A75;
+    background: linear-gradient(180deg, var(--panel-1) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--panel-borde);
     border-radius: 14px;
     padding: 12px 10px;
     text-align: center;
-    box-shadow: 0 4px 14px rgba(4,9,34,0.40);
+    box-shadow: 0 4px 14px var(--sombra-suave);
 }
 .mini-stat .n {
-    font-size: 1.3rem; font-weight: 800; color: #FFFFFF;
+    font-size: 1.3rem; font-weight: 800; color: var(--texto-fuerte);
     white-space: nowrap; overflow-wrap: normal; word-break: normal;
 }
 .mini-stat .l {
-    font-size: 0.68rem; color: #5BE49B; text-transform: uppercase;
+    font-size: 0.68rem; color: var(--acento-etiqueta); text-transform: uppercase;
     letter-spacing: .3px; margin-top: 3px;
     overflow-wrap: normal; word-break: normal; hyphens: none;
 }
@@ -1324,19 +1416,19 @@ div[data-testid="stWidgetLabel"] p {
     justify-content: space-between;
     margin: 8px 0 12px 0;
 }
-.table-card-header .title { font-weight: 700; font-size: 1.08rem; color: #FFFFFF; }
+.table-card-header .title { font-weight: 700; font-size: 1.08rem; color: var(--texto-fuerte); }
 .count-pill {
-    background: rgba(138,216,248,0.16); color: #8AD8F8; font-weight: 700;
+    background: var(--celeste-bg); color: var(--celeste); font-weight: 700;
     padding: 4px 14px; border-radius: 20px; font-size: 0.8rem;
 }
 
-/* Ambiente general azul noche */
+/* Ambiente general (azul noche o claro según el tema) */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0E1840 0%, #131F52 100%);
-    border-right: 1px solid #24336E;
+    background: linear-gradient(180deg, var(--sidebar-1) 0%, var(--sidebar-2) 100%);
+    border-right: 1px solid var(--divisor);
 }
-h1, h2, h3, h4 { color: #F2F6FF; }
-hr { border-color: #24336E; }
+h1, h2, h3, h4 { color: var(--texto-fuerte); }
+hr { border-color: var(--divisor); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1430,7 +1522,7 @@ def clasificar_saturacion(pct):
     Devuelve (etiqueta, clase_badge, clase_barra, clase_avatar).
     Umbrales alineados con la memoria del TFM:
     <60% capacidad disponible · 60-80% saludable · 80-90% seguimiento ·
-    90-95% precaución · ≥95% crítico.
+    90-95% precaución · 95% crítico.
     """
     if pct >= 95:
         return "Crítico", "badge-sat-crit", "crit", "alta"
@@ -1511,9 +1603,12 @@ for _c in ("Probabilidad", "Impacto", "Nivel_Riesgo"):
 # ACCESO MULTIUSUARIO: PM O COLABORADOR
 # =========================================================
 if "rol" not in st.session_state:
+    _, col_tema_login = st.columns([5, 1])
+    with col_tema_login:
+        selector_tema("tema_login")
     st.markdown("""
     <div class="banner">
-        <h1>📊 Portafolio BI · Acceso</h1>
+        <h1>Portafolio BI · Acceso</h1>
         <p>Selecciona tu perfil para entrar a la plataforma.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -1521,7 +1616,7 @@ if "rol" not in st.session_state:
     col_pm, col_colab = st.columns(2)
     with col_pm:
         with st.container(border=True):
-            st.markdown("#### 👩‍💼 Project Manager")
+            st.markdown("#### Project Manager")
             st.caption(
                 "Administra los proyectos, el equipo, el presupuesto detallado, las tareas "
                 "y los riesgos (Módulos 1, 2, 4, 5 y 6), y supervisa el Monitor de Salud "
@@ -1532,7 +1627,7 @@ if "rol" not in st.session_state:
                 st.rerun()
     with col_colab:
         with st.container(border=True):
-            st.markdown("#### 🧑‍💻 Colaborador")
+            st.markdown("#### Colaborador")
             st.caption(
                 "Reporta tus horas de la semana y cómo sentiste la carga (Módulo 3). "
                 "Solo verás y editarás tus propios registros."
@@ -1567,15 +1662,16 @@ if not es_pm and id_usuario not in df_colaboradores["ID_Colaborador"].astype(str
 # NAVEGACIÓN LATERAL
 # =========================================================
 with st.sidebar:
-    st.markdown("## 📊 Portafolio BI")
+    st.markdown("## Portafolio BI")
     st.caption("Gestión simplificada de proyectos y talento humano · TFM VIU")
+    selector_tema("tema_sidebar")
     if es_pm:
-        st.markdown("**👩‍💼 Sesión:** Project Manager")
+        st.markdown("**Sesión:** Project Manager")
         st.caption("Administras los módulos del portafolio y supervisas la salud del equipo.")
     else:
-        st.markdown(f"**🧑‍💻 Sesión:** {nombre_usuario}")
+        st.markdown(f"**Sesión:** {nombre_usuario}")
         st.caption("Tu acceso está enfocado en reportar tus horas y tu carga percibida.")
-    if st.button("🚪 Cerrar sesión", use_container_width=True):
+    if st.button("Cerrar sesión", use_container_width=True):
         for _k in ("rol", "id_colaborador", "nombre_colaborador"):
             st.session_state.pop(_k, None)
         st.rerun()
@@ -1584,24 +1680,24 @@ with st.sidebar:
         modulo = st.radio(
             "Módulos",
             [
-                "🏠 Inicio / Resumen",
-                "📁 1 · Proyectos",
-                "👥 2 · Colaboradores",
-                "❤️ 3 · Monitor de Salud",
-                "💰 4 · Presupuesto detallado",
-                "✅ 5 · Tareas e hitos",
-                "⚠️ 6 · Riesgos",
+                "Inicio / Resumen",
+                "1 · Proyectos",
+                "2 · Colaboradores",
+                "3 · Monitor de Salud",
+                "4 · Presupuesto detallado",
+                "5 · Tareas e hitos",
+                "6 · Riesgos",
             ],
         )
     else:
-        modulo = "❤️ 3 · Monitor de Salud"
+        modulo = "3 · Monitor de Salud"
         st.markdown("**Módulos**")
-        st.markdown("❤️ 3 · Mi registro semanal")
+        st.markdown("3 · Mi registro semanal")
     st.divider()
     st.caption(f"Fuente de datos: {ARCHIVO_EXCEL}")
     if es_pm:
-        with st.expander("⚙️ Mantenimiento"):
-            if st.button("🗑️ Reiniciar sistema"):
+        with st.expander("Mantenimiento"):
+            if st.button("Reiniciar sistema"):
                 if os.path.exists(ARCHIVO_EXCEL):
                     os.remove(ARCHIVO_EXCEL)
                 for _k in ("rol", "id_colaborador", "nombre_colaborador"):
@@ -1612,7 +1708,7 @@ with st.sidebar:
 # =========================================================
 # MÓDULO: INICIO / RESUMEN
 # =========================================================
-if modulo.startswith("🏠"):
+if modulo.startswith("Inicio"):
     st.markdown("""
     <div class="banner">
         <h1>Portafolio de proyectos</h1>
@@ -1656,10 +1752,10 @@ if modulo.startswith("🏠"):
 # =========================================================
 # MÓDULO 1: PROYECTOS
 # =========================================================
-elif modulo.startswith("📁"):
+elif modulo.startswith("1"):
     st.markdown("""
     <div class="banner">
-        <h1>📁 Módulo 1 · Captura de proyectos</h1>
+        <h1>Módulo 1 · Captura de proyectos</h1>
         <p>Registra y administra todos los proyectos de tu portafolio en un solo lugar.</p>
     </div>
     """, unsafe_allow_html=True)
@@ -1692,7 +1788,7 @@ elif modulo.startswith("📁"):
     with st.form("form_proyecto", clear_on_submit=True):
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🧾</div>
+            <div class="icon">01</div>
             <div>
                 <div class="title">Información general</div>
                 <div class="subtitle">Identificación y responsables del proyecto</div>
@@ -1725,7 +1821,7 @@ elif modulo.startswith("📁"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🗓️</div>
+            <div class="icon">02</div>
             <div>
                 <div class="title">Cronograma</div>
                 <div class="subtitle">Fechas de inicio, cierre planificado y cierre real</div>
@@ -1748,7 +1844,7 @@ elif modulo.startswith("📁"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">💰</div>
+            <div class="icon">03</div>
             <div>
                 <div class="title">Presupuesto</div>
                 <div class="subtitle">Montos planificados y ejecutados</div>
@@ -1771,7 +1867,7 @@ elif modulo.startswith("📁"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">📈</div>
+            <div class="icon">04</div>
             <div>
                 <div class="title">Estado y avance</div>
                 <div class="subtitle">Situación actual del proyecto</div>
@@ -1786,7 +1882,7 @@ elif modulo.startswith("📁"):
             prioridad = st.selectbox("Prioridad", ["Alta", "Media", "Baja"])
 
         st.write("")
-        submitted = st.form_submit_button("💾 Guardar proyecto", use_container_width=True)
+        submitted = st.form_submit_button("Guardar proyecto", use_container_width=True)
 
         if submitted:
             errores = []
@@ -1829,21 +1925,21 @@ elif modulo.startswith("📁"):
                 )
                 guardar_hoja("Proyectos", df_actualizado)
 
-                mensajes = [("success", f"✅ Proyecto '{nombre}' guardado correctamente.")]
+                mensajes = [("success", f"Proyecto '{nombre}' guardado correctamente.")]
                 if ejecutado > presupuesto and presupuesto > 0:
-                    mensajes.append(("warning", "⚠️ El presupuesto ejecutado supera al planificado. Se guardó igual, pero revisa el dato."))
+                    mensajes.append(("warning", "El presupuesto ejecutado supera al planificado. Se guardó igual, pero revisa el dato."))
                 if estado == "Finalizado" and avance != 100:
-                    mensajes.append(("info", f"💡 Marcaste el proyecto como «Finalizado» pero el avance quedó en {avance}%. Puedes editarlo y ajustarlo a 100% si ya terminó."))
+                    mensajes.append(("info", f"Marcaste el proyecto como «Finalizado» pero el avance quedó en {avance}%. Puedes editarlo y ajustarlo a 100% si ya terminó."))
                 elif estado == "No iniciado" and avance != 0:
-                    mensajes.append(("info", f"💡 El proyecto está «No iniciado» pero el avance quedó en {avance}%. Revisa si el estado debería ser «En curso»."))
+                    mensajes.append(("info", f"El proyecto está «No iniciado» pero el avance quedó en {avance}%. Revisa si el estado debería ser «En curso»."))
                 if estado == "Finalizado" and not ya_finalizo:
-                    mensajes.append(("info", "💡 El proyecto quedó como «Finalizado» pero no registraste la fecha real de cierre. Puedes agregarla editando el proyecto."))
+                    mensajes.append(("info", "El proyecto quedó como «Finalizado» pero no registraste la fecha real de cierre. Puedes agregarla editando el proyecto."))
                 st.session_state["flash_proyecto"] = mensajes
                 st.rerun()
 
     # ---- Editar o eliminar un proyecto existente ----
     st.write("")
-    with st.expander("✏️ Editar o eliminar un proyecto existente", expanded=not df_proyectos.empty):
+    with st.expander("Editar o eliminar un proyecto existente", expanded=not df_proyectos.empty):
         if df_proyectos.empty:
             st.caption("Todavía no hay proyectos capturados para editar.")
         else:
@@ -1938,9 +2034,9 @@ elif modulo.startswith("📁"):
                 st.write("")
                 b1, b2 = st.columns(2)
                 with b1:
-                    actualizar = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    actualizar = st.form_submit_button("Guardar cambios", use_container_width=True)
                 with b2:
-                    eliminar = st.form_submit_button("🗑️ Eliminar proyecto", use_container_width=True)
+                    eliminar = st.form_submit_button("Eliminar proyecto", use_container_width=True)
 
                 if actualizar:
                     errores_edit = []
@@ -1979,13 +2075,13 @@ elif modulo.startswith("📁"):
                         df_proyectos.loc[idx_original, "Prioridad"] = e_prioridad
                         guardar_hoja("Proyectos", df_proyectos)
 
-                        mensajes = [("success", f"✅ Proyecto '{e_nombre}' actualizado correctamente.")]
+                        mensajes = [("success", f"Proyecto '{e_nombre}' actualizado correctamente.")]
                         if e_ejecutado > e_presupuesto and e_presupuesto > 0:
-                            mensajes.append(("warning", "⚠️ El presupuesto ejecutado supera al planificado. Se guardó igual, pero revisa el dato."))
+                            mensajes.append(("warning", "El presupuesto ejecutado supera al planificado. Se guardó igual, pero revisa el dato."))
                         if e_estado == "Finalizado" and e_avance != 100:
-                            mensajes.append(("info", f"💡 Marcaste el proyecto como «Finalizado» pero el avance quedó en {e_avance}%."))
+                            mensajes.append(("info", f"Marcaste el proyecto como «Finalizado» pero el avance quedó en {e_avance}%."))
                         elif e_estado == "No iniciado" and e_avance != 0:
-                            mensajes.append(("info", f"💡 El proyecto está «No iniciado» pero el avance quedó en {e_avance}%."))
+                            mensajes.append(("info", f"El proyecto está «No iniciado» pero el avance quedó en {e_avance}%."))
                         st.session_state["flash_proyecto"] = mensajes
                         st.rerun()
 
@@ -1996,14 +2092,14 @@ elif modulo.startswith("📁"):
                         idx_original = fila.name
                         df_proyectos = df_proyectos.drop(index=idx_original)
                         guardar_hoja("Proyectos", df_proyectos)
-                        st.session_state["flash_proyecto"] = [("success", f"🗑️ Proyecto '{fila['Nombre_Proyecto']}' eliminado correctamente.")]
+                        st.session_state["flash_proyecto"] = [("success", f"Proyecto '{fila['Nombre_Proyecto']}' eliminado correctamente.")]
                         st.rerun()
 
     st.write("")
     df_mostrar = leer_hoja("Proyectos", COLS_PROYECTOS)
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Proyectos capturados</div>
+        <div class="title">Proyectos capturados</div>
         <div class="count-pill">{len(df_mostrar)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -2012,7 +2108,7 @@ elif modulo.startswith("📁"):
         st.info("Todavía no hay proyectos capturados.")
     else:
         buscar = st.text_input(
-            "🔍 Buscar proyecto",
+            "Buscar proyecto",
             placeholder="Filtra por nombre, cliente/área o líder...",
             label_visibility="collapsed",
         )
@@ -2054,18 +2150,18 @@ elif modulo.startswith("📁"):
 # =========================================================
 # MÓDULO 2: COLABORADORES
 # =========================================================
-elif modulo.startswith("👥"):
+elif modulo.startswith("2"):
     st.markdown("""
     <div class="banner">
-        <h1>👥 Módulo 2 · Colaboradores</h1>
+        <h1>Módulo 2 · Colaboradores</h1>
         <p>Registra a tu equipo, su rol y la disponibilidad semanal de cada persona.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="focus-callout">
-        🧠 <strong>Por qué vale la pena registrar bien esta información:</strong> la capacidad semanal
-        de cada colaborador se compara en el <strong>❤️ Monitor de Salud</strong> con las horas que
+        <strong>Por qué vale la pena registrar bien esta información:</strong> la capacidad semanal
+        de cada colaborador se compara en el <strong>Monitor de Salud</strong> con las horas que
         realmente dedica a sus proyectos. Así el sistema puede avisarte a tiempo cuando alguien está
         sobrecargado, antes de que afecte su bienestar o el avance del proyecto.
     </div>
@@ -2109,7 +2205,7 @@ elif modulo.startswith("👥"):
     with st.form("form_colaborador", clear_on_submit=True):
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🧑‍💼</div>
+            <div class="icon">01</div>
             <div>
                 <div class="title">Información personal</div>
                 <div class="subtitle">Identificación y contacto del colaborador</div>
@@ -2130,7 +2226,7 @@ elif modulo.startswith("👥"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">💼</div>
+            <div class="icon">02</div>
             <div>
                 <div class="title">Rol y área</div>
                 <div class="subtitle">Ubicación del colaborador en la organización</div>
@@ -2146,7 +2242,7 @@ elif modulo.startswith("👥"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">⏱️</div>
+            <div class="icon">03</div>
             <div>
                 <div class="title">Capacidad y asignación</div>
                 <div class="subtitle">Disponibilidad semanal y proyectos en los que participa</div>
@@ -2171,7 +2267,7 @@ elif modulo.startswith("👥"):
         )
 
         st.write("")
-        submitted_col = st.form_submit_button("💾 Guardar colaborador", use_container_width=True)
+        submitted_col = st.form_submit_button("Guardar colaborador", use_container_width=True)
 
         if submitted_col:
             errores_col = []
@@ -2210,17 +2306,17 @@ elif modulo.startswith("👥"):
                 )
                 guardar_hoja("Colaboradores", df_col_actualizado)
 
-                mensajes_col = [("success", f"✅ Colaborador '{nombre_col}' guardado correctamente.")]
+                mensajes_col = [("success", f"Colaborador '{nombre_col}' guardado correctamente.")]
                 if email.strip() and "@" not in email:
-                    mensajes_col.append(("warning", "⚠️ El correo ingresado no parece válido (falta el '@'). Se guardó igual, pero revisa el dato."))
+                    mensajes_col.append(("warning", "El correo ingresado no parece válido (falta el '@'). Se guardó igual, pero revisa el dato."))
                 if len(ids_proyectos) >= 3:
-                    mensajes_col.append(("info", f"💡 «{nombre_col}» quedó asignado a {len(ids_proyectos)} proyectos. Vigila su carga cuando el Monitor de Salud esté disponible."))
+                    mensajes_col.append(("info", f"«{nombre_col}» quedó asignado a {len(ids_proyectos)} proyectos. Vigila su carga cuando el Monitor de Salud esté disponible."))
                 st.session_state["flash_colaborador"] = mensajes_col
                 st.rerun()
 
     # ---- Editar o eliminar un colaborador existente ----
     st.write("")
-    with st.expander("✏️ Editar o eliminar un colaborador existente", expanded=not df_colaboradores.empty):
+    with st.expander("Editar o eliminar un colaborador existente", expanded=not df_colaboradores.empty):
         if df_colaboradores.empty:
             st.caption("Todavía no hay colaboradores capturados para editar.")
         else:
@@ -2276,9 +2372,9 @@ elif modulo.startswith("👥"):
                 st.write("")
                 b1, b2 = st.columns(2)
                 with b1:
-                    actualizar_col = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    actualizar_col = st.form_submit_button("Guardar cambios", use_container_width=True)
                 with b2:
-                    eliminar_col = st.form_submit_button("🗑️ Eliminar colaborador", use_container_width=True)
+                    eliminar_col = st.form_submit_button("Eliminar colaborador", use_container_width=True)
 
                 if actualizar_col:
                     errores_edit_col = []
@@ -2313,11 +2409,11 @@ elif modulo.startswith("👥"):
                         df_colaboradores.loc[idx_original_col, "Estado"] = e_estado_col
                         guardar_hoja("Colaboradores", df_colaboradores)
 
-                        mensajes_edit_col = [("success", f"✅ Colaborador '{e_nombre_col}' actualizado correctamente.")]
+                        mensajes_edit_col = [("success", f"Colaborador '{e_nombre_col}' actualizado correctamente.")]
                         if e_email.strip() and "@" not in e_email:
-                            mensajes_edit_col.append(("warning", "⚠️ El correo ingresado no parece válido (falta el '@')."))
+                            mensajes_edit_col.append(("warning", "El correo ingresado no parece válido (falta el '@')."))
                         if len(ids_proyectos_edit) >= 3:
-                            mensajes_edit_col.append(("info", f"💡 «{e_nombre_col}» quedó asignado a {len(ids_proyectos_edit)} proyectos. Vigila su carga en el Monitor de Salud."))
+                            mensajes_edit_col.append(("info", f"«{e_nombre_col}» quedó asignado a {len(ids_proyectos_edit)} proyectos. Vigila su carga en el Monitor de Salud."))
                         st.session_state["flash_colaborador"] = mensajes_edit_col
                         st.rerun()
 
@@ -2328,7 +2424,7 @@ elif modulo.startswith("👥"):
                         idx_original_col = fila_col.name
                         df_colaboradores = df_colaboradores.drop(index=idx_original_col)
                         guardar_hoja("Colaboradores", df_colaboradores)
-                        st.session_state["flash_colaborador"] = [("success", f"🗑️ Colaborador '{fila_col['Nombre']}' eliminado correctamente.")]
+                        st.session_state["flash_colaborador"] = [("success", f"Colaborador '{fila_col['Nombre']}' eliminado correctamente.")]
                         st.rerun()
 
     # ---- Vista rápida de carga de trabajo (preview del Monitor de Salud) ----
@@ -2336,7 +2432,7 @@ elif modulo.startswith("👥"):
     df_mostrar_col = leer_hoja("Colaboradores", COLS_COLABORADORES)
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">🩺 Vista rápida de carga de trabajo</div>
+        <div class="title">Vista rápida de carga de trabajo</div>
         <div class="count-pill">{len(df_mostrar_col)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -2358,16 +2454,16 @@ elif modulo.startswith("👥"):
                     st.markdown(f'<div class="avatar-circle {clase_avatar}">{iniciales}</div>', unsafe_allow_html=True)
                 with b:
                     st.markdown(f"**{fila_vista['Nombre']}**  \n{fila_vista['Rol']} · {fila_vista['Area']}")
-                    st.caption(f"📁 {nombres_proyectos}")
+                    st.caption(f"{nombres_proyectos}")
                 with c_carga:
                     st.markdown(f'<span class="badge {clase_badge}">{etiqueta_carga} · {len(ids_asignados)} proy.</span>', unsafe_allow_html=True)
-                    st.caption(f"⏱️ {capacidad_fmt:.0f} h/semana · {fila_vista['Estado']}")
+                    st.caption(f"{capacidad_fmt:.0f} h/semana · {fila_vista['Estado']}")
 
     # ---- Tabla completa de colaboradores ----
     st.write("")
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Colaboradores capturados</div>
+        <div class="title">Colaboradores capturados</div>
         <div class="count-pill">{len(df_mostrar_col)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -2376,7 +2472,7 @@ elif modulo.startswith("👥"):
         st.info("Todavía no hay colaboradores capturados.")
     else:
         buscar_col = st.text_input(
-            "🔍 Buscar colaborador",
+            "Buscar colaborador",
             placeholder="Filtra por nombre, rol o área...",
             label_visibility="collapsed",
             key="buscar_colaborador",
@@ -2407,21 +2503,21 @@ elif modulo.startswith("👥"):
 # =========================================================
 # MÓDULO 3: MONITOR DE SALUD — AUTO-REPORTE DEL COLABORADOR
 # =========================================================
-elif modulo.startswith("❤️") and not es_pm:
+elif modulo.startswith("3") and not es_pm:
     st.markdown(f"""
     <div class="banner">
-        <h1>❤️ Módulo 3 · Mi registro semanal</h1>
+        <h1>Módulo 3 · Mi registro semanal</h1>
         <p>Hola, {nombre_usuario}. Reporta tus horas de cada semana y cómo sentiste la carga.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="focus-callout">
-        ❤️ <strong>Por qué reportar cada semana:</strong> tus horas y tu sensación de carga son la base
+        <strong>Por qué reportar cada semana:</strong> tus horas y tu sensación de carga son la base
         para detectar la sobrecarga a tiempo. La saturación compara tus horas reales con tu capacidad:
         ⚪ <strong>&lt;60%</strong> capacidad disponible · 🟢 <strong>60–80%</strong> saludable ·
         🟡 <strong>80–90%</strong> seguimiento · 🟠 <strong>90–95%</strong> precaución ·
-        🔴 <strong>≥95%</strong> crítico.
+        🔴 <strong>95%</strong> crítico.
         Solo tú puedes registrar y editar tus horas; el PM ve el semáforo del equipo para equilibrar la carga.
     </div>
     """, unsafe_allow_html=True)
@@ -2470,7 +2566,7 @@ elif modulo.startswith("❤️") and not es_pm:
     st.write("")
     st.markdown("""
     <div class="table-card-header">
-        <div class="title">🚦 Mi semáforo</div>
+        <div class="title">Mi semáforo</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -2513,7 +2609,7 @@ elif modulo.startswith("❤️") and not es_pm:
     with st.form("form_salud", clear_on_submit=True):
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🗓️</div>
+            <div class="icon">01</div>
             <div>
                 <div class="title">Registrar mis horas de la semana</div>
                 <div class="subtitle">En qué proyecto trabajaste y en qué semana</div>
@@ -2534,7 +2630,7 @@ elif modulo.startswith("❤️") and not es_pm:
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">⏱️</div>
+            <div class="icon">02</div>
             <div>
                 <div class="title">Horas de la semana</div>
                 <div class="subtitle">Lo planificado vs. lo que realmente trabajaste</div>
@@ -2555,7 +2651,7 @@ elif modulo.startswith("❤️") and not es_pm:
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">💬</div>
+            <div class="icon">03</div>
             <div>
                 <div class="title">Tu percepción</div>
                 <div class="subtitle">Cómo sentiste la carga esa semana — el dato humano del monitor</div>
@@ -2570,7 +2666,7 @@ elif modulo.startswith("❤️") and not es_pm:
         comentario = st.text_input("Comentario (opcional)", placeholder="Ej: semana de cierre de hito, hubo incidentes...")
 
         st.write("")
-        submitted_salud = st.form_submit_button("💾 Guardar mi registro semanal", use_container_width=True)
+        submitted_salud = st.form_submit_button("Guardar mi registro semanal", use_container_width=True)
 
         if submitted_salud:
             errores_salud = []
@@ -2613,7 +2709,7 @@ elif modulo.startswith("❤️") and not es_pm:
                 df_salud_actualizado = pd.concat([df_salud, pd.DataFrame([nuevo_registro])], ignore_index=True)
                 guardar_hoja("Salud_Equipo", df_salud_actualizado)
 
-                mensajes_salud = [("success", "✅ Tu registro semanal quedó guardado. ¡Gracias por reportar a tiempo!")]
+                mensajes_salud = [("success", "Tu registro semanal quedó guardado. ¡Gracias por reportar a tiempo!")]
 
                 # Alerta temprana: recalcular la saturación de esa semana con el nuevo registro
                 if capacidad_mia > 0:
@@ -2630,15 +2726,15 @@ elif modulo.startswith("❤️") and not es_pm:
                         mensajes_salud.append(("warning", f"🟠 Con este registro quedas al {sat_nueva:.0f}% de tu capacidad esta semana ({total_semana:.1f} h de {capacidad_mia:.0f} h). Se dejó registro en la hoja de alertas."))
                         registrar_alerta("Monitor de Salud", "Precaución", id_usuario, nombre_usuario, "", semana_nueva, round(sat_nueva, 1), 90, texto_alerta)
                 if int(percibida_sel[0]) >= 4:
-                    mensajes_salud.append(("info", "💡 Reportaste que la semana se sintió pesada. Coméntalo con tu PM: tu percepción cuenta tanto como las horas."))
+                    mensajes_salud.append(("info", "Reportaste que la semana se sintió pesada. Coméntalo con tu PM: tu percepción cuenta tanto como las horas."))
                 if ids_mis_proyectos and id_proy_nuevo not in ids_mis_proyectos:
-                    mensajes_salud.append(("info", f"💡 El proyecto {id_proy_nuevo} no está en tu lista de proyectos asignados. Avisa al PM para que actualice tu asignación en el Módulo 2."))
+                    mensajes_salud.append(("info", f"El proyecto {id_proy_nuevo} no está en tu lista de proyectos asignados. Avisa al PM para que actualice tu asignación en el Módulo 2."))
                 st.session_state["flash_salud"] = mensajes_salud
                 st.rerun()
 
     # ---- Editar o eliminar uno de mis registros ----
     st.write("")
-    with st.expander("✏️ Editar o eliminar uno de mis registros", expanded=False):
+    with st.expander("Editar o eliminar uno de mis registros", expanded=False):
         if df_salud_mio.empty:
             st.caption("Todavía no tienes registros de horas para editar.")
         else:
@@ -2696,9 +2792,9 @@ elif modulo.startswith("❤️") and not es_pm:
                 st.write("")
                 b1, b2 = st.columns(2)
                 with b1:
-                    actualizar_sal = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    actualizar_sal = st.form_submit_button("Guardar cambios", use_container_width=True)
                 with b2:
-                    eliminar_sal = st.form_submit_button("🗑️ Eliminar registro", use_container_width=True)
+                    eliminar_sal = st.form_submit_button("Eliminar registro", use_container_width=True)
 
                 if actualizar_sal:
                     id_proy_edit = mapa_etiqueta_id_proy_salud[e_proy_sel]
@@ -2730,7 +2826,7 @@ elif modulo.startswith("❤️") and not es_pm:
                         df_salud.loc[idx_reg, "Comentario"] = e_comentario.strip()
                         guardar_hoja("Salud_Equipo", df_salud)
 
-                        mensajes_edit_sal = [("success", f"✅ Registro {id_reg_sel} actualizado correctamente.")]
+                        mensajes_edit_sal = [("success", f"Registro {id_reg_sel} actualizado correctamente.")]
                         if capacidad_mia > 0:
                             total_sem_edit = df_salud[
                                 (df_salud["ID_Colaborador"].astype(str) == id_usuario)
@@ -2754,14 +2850,14 @@ elif modulo.startswith("❤️") and not es_pm:
                     else:
                         df_salud = df_salud.drop(index=fila_reg.name)
                         guardar_hoja("Salud_Equipo", df_salud)
-                        st.session_state["flash_salud"] = [("success", f"🗑️ Registro {id_reg_sel} eliminado correctamente.")]
+                        st.session_state["flash_salud"] = [("success", f"Registro {id_reg_sel} eliminado correctamente.")]
                         st.rerun()
 
     # ---- Mi historial ----
     st.write("")
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Mi historial de registros</div>
+        <div class="title">Mi historial de registros</div>
         <div class="count-pill">{len(df_salud_mio)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -2811,21 +2907,21 @@ elif modulo.startswith("❤️") and not es_pm:
 # =========================================================
 # MÓDULO 3: MONITOR DE SALUD — SUPERVISIÓN DEL PM
 # =========================================================
-elif modulo.startswith("❤️"):
+elif modulo.startswith("3"):
     st.markdown("""
     <div class="banner">
-        <h1>❤️ Módulo 3 · Monitor de Salud</h1>
+        <h1>Módulo 3 · Monitor de Salud</h1>
         <p>Supervisa la carga real y percibida de todo el equipo, semana a semana.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="focus-callout">
-        ❤️ <strong>Cómo leer este monitor:</strong> la saturación compara las horas que cada persona
+        <strong>Cómo leer este monitor:</strong> la saturación compara las horas que cada persona
         trabajó realmente en la semana con su capacidad disponible.
         ⚪ <strong>&lt;60%</strong> capacidad disponible · 🟢 <strong>60–80%</strong> saludable ·
         🟡 <strong>80–90%</strong> seguimiento · 🟠 <strong>90–95%</strong> precaución ·
-        🔴 <strong>≥95%</strong> crítico.
+        🔴 <strong>95%</strong> crítico.
         Cada colaborador reporta sus propias horas y su carga percibida desde su acceso personal;
         aquí supervisas el panorama completo del equipo y el registro de alertas emitidas.
     </div>
@@ -2882,7 +2978,7 @@ elif modulo.startswith("❤️"):
     st.write("")
     st.markdown("""
     <div class="table-card-header">
-        <div class="title">🚦 Semáforo del equipo</div>
+        <div class="title">Semáforo del equipo</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -2919,7 +3015,7 @@ elif modulo.startswith("❤️"):
             ]
             st.error(
                 "**Alerta crítica de sobrecarga**\n\n" + "\n\n".join(lineas)
-                + "\n\n👉 Considera redistribuir tareas o ajustar el alcance de sus proyectos."
+                + "\n\nConsidera redistribuir tareas o ajustar el alcance de sus proyectos."
             )
         if precaucion:
             lineas = [
@@ -2928,7 +3024,7 @@ elif modulo.startswith("❤️"):
             ]
             st.warning("**En zona de precaución**\n\n" + "\n\n".join(lineas))
         if not criticos and not precaucion:
-            st.success("✅ Nadie está en zona de precaución ni crítica en esta semana.")
+            st.success("Nadie está en zona de precaución ni crítica en esta semana.")
 
         columnas_grid = st.columns(2)
         pos = 0
@@ -2978,7 +3074,7 @@ elif modulo.startswith("❤️"):
     # ---- Nota sobre el auto-reporte ----
     st.write("")
     st.info(
-        "📥 Las horas y la carga percibida las reporta cada colaborador desde su propio acceso "
+        "Las horas y la carga percibida las reporta cada colaborador desde su propio acceso "
         "(perfil «Colaborador» en la pantalla de inicio). Si un registro tiene un error, "
         "pide a la persona que lo corrija desde su sesión."
     )
@@ -2987,7 +3083,7 @@ elif modulo.startswith("❤️"):
     st.write("")
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Historial de registros del equipo</div>
+        <div class="title">Historial de registros del equipo</div>
         <div class="count-pill">{len(df_salud)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -3043,7 +3139,7 @@ elif modulo.startswith("❤️"):
     # ---- Registro de alertas emitidas (trazabilidad) ----
     st.write("")
     df_alertas_log = leer_hoja("Alertas", COLS_ALERTAS)
-    with st.expander(f"📜 Registro de alertas emitidas ({len(df_alertas_log)} en total)"):
+    with st.expander(f"Registro de alertas emitidas ({len(df_alertas_log)} en total)"):
         st.caption(
             "Historial automático de todas las alertas que el sistema ha generado "
             "(saturación, presupuesto y cronograma). Sirve de fuente para las notificaciones "
@@ -3070,17 +3166,17 @@ elif modulo.startswith("❤️"):
 # =========================================================
 # MÓDULO 4: PRESUPUESTO DETALLADO (PARTIDAS Y GASTOS POR RUBRO)
 # =========================================================
-elif modulo.startswith("💰"):
+elif modulo.startswith("4"):
     st.markdown("""
     <div class="banner">
-        <h1>💰 Módulo 4 · Presupuesto detallado</h1>
+        <h1>Módulo 4 · Presupuesto detallado</h1>
         <p>Define cuánto se planea gastar en cada rubro y registra los gastos reales para compararlos al instante.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="focus-callout">
-        💰 <strong>Cómo funciona el control presupuestal:</strong> primero define las
+        <strong>Cómo funciona el control presupuestal:</strong> primero define las
         <strong>partidas planificadas</strong> de cada proyecto por rubro (Personal, Software,
         Consultoría...). Luego registra cada <strong>gasto real</strong> contra ese rubro:
         la tabla de control te muestra al instante si el rubro va
@@ -3162,16 +3258,16 @@ elif modulo.startswith("💰"):
             ]
             st.error(
                 "**Rubros con la partida excedida**\n\n" + "\n\n".join(lineas)
-                + "\n\n👉 Revisa el rubro con el líder del proyecto: amplía la partida o frena el gasto."
+                + "\n\nRevisa el rubro con el líder del proyecto: amplía la partida o frena el gasto."
             )
         if rubros_al_limite:
             lineas = [
                 f"🟡 **{idx[0]} · {idx[1]}**: ${fila['Real']:,.0f} de ${fila['Planificado']:,.0f} ({fila['Real'] / fila['Planificado'] * 100:.0f}% ejecutado)"
                 for idx, fila in rubros_al_limite
             ]
-            st.warning("**Rubros al límite de su partida (≥90%)**\n\n" + "\n\n".join(lineas))
+            st.warning("**Rubros al límite de su partida (90%)**\n\n" + "\n\n".join(lineas))
         if not rubros_excedidos and not rubros_al_limite:
-            st.success("✅ Ningún rubro excede ni está al límite de su partida planificada.")
+            st.success("Ningún rubro excede ni está al límite de su partida planificada.")
         if rubros_sin_partida:
             nombres_sp = ", ".join(f"{idx[0]} · {idx[1]}" for idx, _ in rubros_sin_partida)
             st.caption(f"🟠 Gastos sin partida planificada: {nombres_sp}. Define la partida para poder compararlos.")
@@ -3180,7 +3276,7 @@ elif modulo.startswith("💰"):
     st.write("")
     st.markdown("""
     <div class="table-card-header">
-        <div class="title">🧮 Control por rubro del proyecto</div>
+        <div class="title">Control por rubro del proyecto</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -3253,19 +3349,19 @@ elif modulo.startswith("💰"):
                     )
                 if avisos_coherencia:
                     st.info(
-                        "🔎 Diferencia con el Módulo 1: " + " y ".join(avisos_coherencia)
+                        "Diferencia con el Módulo 1: " + " y ".join(avisos_coherencia)
                         + ". Actualiza el proyecto en el Módulo 1 o ajusta los movimientos para que ambos cuadren."
                     )
 
     # ---- Captura: partida planificada o gasto real ----
     st.write("")
-    tab_partida, tab_gasto = st.tabs(["📝 Definir partida planificada", "💸 Registrar gasto real"])
+    tab_partida, tab_gasto = st.tabs(["Definir partida planificada", "Registrar gasto real"])
 
     with tab_partida:
         with st.form("form_partida", clear_on_submit=True):
             st.markdown("""
             <div class="form-section-header">
-                <div class="icon">📝</div>
+                <div class="icon">01</div>
                 <div>
                     <div class="title">Nueva partida planificada</div>
                     <div class="subtitle">Cuánto se piensa gastar en un rubro del proyecto</div>
@@ -3283,7 +3379,7 @@ elif modulo.startswith("💰"):
             p_monto = st.number_input("Monto planificado ($) *", min_value=0.0, step=100.0, key="partida_monto")
 
             st.write("")
-            submitted_partida = st.form_submit_button("💾 Guardar partida planificada", use_container_width=True)
+            submitted_partida = st.form_submit_button("Guardar partida planificada", use_container_width=True)
 
             if submitted_partida:
                 errores_p = []
@@ -3312,12 +3408,12 @@ elif modulo.startswith("💰"):
                     df_presupuesto_act = pd.concat([df_presupuesto, pd.DataFrame([nueva_partida])], ignore_index=True)
                     guardar_hoja("Presupuesto", df_presupuesto_act)
 
-                    mensajes_p = [("success", f"✅ Partida de ${p_monto:,.0f} en «{p_categoria}» guardada para {id_proy_p}.")]
+                    mensajes_p = [("success", f"Partida de ${p_monto:,.0f} en «{p_categoria}» guardada para {id_proy_p}.")]
                     plan_rubro_previo = df_plan_g.loc[
                         (df_plan_g["ID_Proyecto"].astype(str) == id_proy_p) & (df_plan_g["Categoria"] == p_categoria), "Monto",
                     ].sum()
                     if plan_rubro_previo > 0:
-                        mensajes_p.append(("info", f"💡 El rubro «{p_categoria}» ya tenía partidas por ${plan_rubro_previo:,.0f}; con esta suma ${plan_rubro_previo + p_monto:,.0f} planificados."))
+                        mensajes_p.append(("info", f"El rubro «{p_categoria}» ya tenía partidas por ${plan_rubro_previo:,.0f}; con esta suma ${plan_rubro_previo + p_monto:,.0f} planificados."))
                     plan_total_nuevo = df_presupuesto_act.loc[
                         (df_presupuesto_act["ID_Proyecto"].astype(str) == id_proy_p)
                         & (df_presupuesto_act["Tipo"] == "Planificado"), "Monto",
@@ -3327,7 +3423,7 @@ elif modulo.startswith("💰"):
                         errors="coerce",
                     ).sum()
                     if presup_m1_p > 0 and plan_total_nuevo > presup_m1_p + 1:
-                        mensajes_p.append(("warning", f"⚠️ Las partidas de {id_proy_p} ya suman ${plan_total_nuevo:,.0f}, por encima del presupuesto planificado del Módulo 1 (${presup_m1_p:,.0f}). Revisa cuál de los dos debe ajustarse."))
+                        mensajes_p.append(("warning", f"Las partidas de {id_proy_p} ya suman ${plan_total_nuevo:,.0f}, por encima del presupuesto planificado del Módulo 1 (${presup_m1_p:,.0f}). Revisa cuál de los dos debe ajustarse."))
                     st.session_state["flash_gasto"] = mensajes_p
                     st.rerun()
 
@@ -3335,7 +3431,7 @@ elif modulo.startswith("💰"):
         with st.form("form_gasto", clear_on_submit=True):
             st.markdown("""
             <div class="form-section-header">
-                <div class="icon">💸</div>
+                <div class="icon">01</div>
                 <div>
                     <div class="title">Nuevo gasto real</div>
                     <div class="subtitle">Qué se compró o contrató, contra qué rubro y por cuánto</div>
@@ -3352,7 +3448,7 @@ elif modulo.startswith("💰"):
             g_monto = st.number_input("Monto ($) *", min_value=0.0, step=100.0, key="gasto_monto")
 
             st.write("")
-            submitted_gasto = st.form_submit_button("💾 Guardar gasto real", use_container_width=True)
+            submitted_gasto = st.form_submit_button("Guardar gasto real", use_container_width=True)
 
             if submitted_gasto:
                 errores_g = []
@@ -3381,7 +3477,7 @@ elif modulo.startswith("💰"):
                     df_presupuesto_act = pd.concat([df_presupuesto, pd.DataFrame([nuevo_gasto])], ignore_index=True)
                     guardar_hoja("Presupuesto", df_presupuesto_act)
 
-                    mensajes_g = [("success", f"✅ Gasto de ${g_monto:,.0f} en «{g_categoria}» guardado en {id_proy_g}.")]
+                    mensajes_g = [("success", f"Gasto de ${g_monto:,.0f} en «{g_categoria}» guardado en {id_proy_g}.")]
 
                     # Control por rubro: comparar lo ejecutado contra la partida del rubro
                     plan_rubro = df_plan_g.loc[
@@ -3393,11 +3489,11 @@ elif modulo.startswith("💰"):
                         & (df_presupuesto_act["Tipo"] == "Real"), "Monto",
                     ].sum()
                     if plan_rubro <= 0:
-                        mensajes_g.append(("info", f"💡 El rubro «{g_categoria}» de {id_proy_g} no tiene partida planificada. Defínela en la pestaña «Definir partida planificada» para poder controlarlo."))
+                        mensajes_g.append(("info", f"El rubro «{g_categoria}» de {id_proy_g} no tiene partida planificada. Defínela en la pestaña «Definir partida planificada» para poder controlarlo."))
                     elif real_rubro > plan_rubro:
                         pct_rubro = (real_rubro / plan_rubro - 1) * 100
                         nivel_rubro = "Crítico" if pct_rubro > 10 else "Precaución"
-                        mensajes_g.append(("warning", f"⚠️ Con este gasto, el rubro «{g_categoria}» de {id_proy_g} queda en ${real_rubro:,.0f}, por encima de su partida de ${plan_rubro:,.0f} (+{pct_rubro:.1f}%). Se dejó registro en la hoja de alertas."))
+                        mensajes_g.append(("warning", f"Con este gasto, el rubro «{g_categoria}» de {id_proy_g} queda en ${real_rubro:,.0f}, por encima de su partida de ${plan_rubro:,.0f} (+{pct_rubro:.1f}%). Se dejó registro en la hoja de alertas."))
                         registrar_alerta("Presupuesto", nivel_rubro, id_proy_g, mapa_nombre_proy_g.get(id_proy_g, id_proy_g), id_proy_g, "",
                                          round(real_rubro, 0), round(plan_rubro, 0),
                                          f"El rubro «{g_categoria}» de {id_proy_g} lleva ${real_rubro:,.0f} ejecutados sobre ${plan_rubro:,.0f} planificados (+{pct_rubro:.1f}%).")
@@ -3416,7 +3512,7 @@ elif modulo.startswith("💰"):
                     if presup_proy > 0 and real_proy_total > presup_proy:
                         pct_desvio = (real_proy_total / presup_proy - 1) * 100
                         nivel_desvio = "Crítico" if pct_desvio > 10 else "Precaución"
-                        mensajes_g.append(("warning", f"⚠️ Con este gasto, lo ejecutado en {id_proy_g} (${real_proy_total:,.0f}) supera su presupuesto planificado (${presup_proy:,.0f}) en {pct_desvio:.1f}%. Se dejó registro en la hoja de alertas."))
+                        mensajes_g.append(("warning", f"Con este gasto, lo ejecutado en {id_proy_g} (${real_proy_total:,.0f}) supera su presupuesto planificado (${presup_proy:,.0f}) en {pct_desvio:.1f}%. Se dejó registro en la hoja de alertas."))
                         registrar_alerta("Presupuesto", nivel_desvio, id_proy_g, mapa_nombre_proy_g.get(id_proy_g, id_proy_g), id_proy_g, "",
                                          round(real_proy_total, 0), round(presup_proy, 0),
                                          f"Lo ejecutado (${real_proy_total:,.0f}) supera el presupuesto planificado (${presup_proy:,.0f}) en {pct_desvio:.1f}%.")
@@ -3425,7 +3521,7 @@ elif modulo.startswith("💰"):
 
     # ---- Editar o eliminar un movimiento ----
     st.write("")
-    with st.expander("✏️ Editar o eliminar un movimiento existente", expanded=False):
+    with st.expander("Editar o eliminar un movimiento existente", expanded=False):
         if df_presupuesto.empty:
             st.caption("Todavía no hay movimientos para editar.")
         else:
@@ -3481,9 +3577,9 @@ elif modulo.startswith("💰"):
                 st.write("")
                 b1, b2 = st.columns(2)
                 with b1:
-                    actualizar_g = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    actualizar_g = st.form_submit_button("Guardar cambios", use_container_width=True)
                 with b2:
-                    eliminar_g = st.form_submit_button("🗑️ Eliminar movimiento", use_container_width=True)
+                    eliminar_g = st.form_submit_button("Eliminar movimiento", use_container_width=True)
 
                 if actualizar_g:
                     if not eg_concepto.strip():
@@ -3502,7 +3598,7 @@ elif modulo.startswith("💰"):
                         df_presupuesto.loc[idx_g, "Monto"] = eg_monto
                         guardar_hoja("Presupuesto", df_presupuesto)
 
-                        mensajes_eg = [("success", f"✅ Movimiento {id_g_sel} actualizado correctamente.")]
+                        mensajes_eg = [("success", f"Movimiento {id_g_sel} actualizado correctamente.")]
                         if eg_tipo == "Real":
                             plan_rubro_e = df_presupuesto.loc[
                                 (df_presupuesto["ID_Proyecto"].astype(str) == id_proy_eg)
@@ -3516,7 +3612,7 @@ elif modulo.startswith("💰"):
                             ].sum()
                             if plan_rubro_e > 0 and real_rubro_e > plan_rubro_e:
                                 pct_rubro_e = (real_rubro_e / plan_rubro_e - 1) * 100
-                                mensajes_eg.append(("warning", f"⚠️ El rubro «{eg_categoria}» de {id_proy_eg} queda en ${real_rubro_e:,.0f}, por encima de su partida de ${plan_rubro_e:,.0f} (+{pct_rubro_e:.1f}%). Se dejó registro en la hoja de alertas."))
+                                mensajes_eg.append(("warning", f"El rubro «{eg_categoria}» de {id_proy_eg} queda en ${real_rubro_e:,.0f}, por encima de su partida de ${plan_rubro_e:,.0f} (+{pct_rubro_e:.1f}%). Se dejó registro en la hoja de alertas."))
                                 registrar_alerta("Presupuesto", "Crítico" if pct_rubro_e > 10 else "Precaución",
                                                  id_proy_eg, mapa_nombre_proy_g.get(id_proy_eg, id_proy_eg), id_proy_eg, "",
                                                  round(real_rubro_e, 0), round(plan_rubro_e, 0),
@@ -3530,14 +3626,14 @@ elif modulo.startswith("💰"):
                     else:
                         df_presupuesto = df_presupuesto.drop(index=fila_g.name)
                         guardar_hoja("Presupuesto", df_presupuesto)
-                        st.session_state["flash_gasto"] = [("success", f"🗑️ Movimiento {id_g_sel} eliminado correctamente.")]
+                        st.session_state["flash_gasto"] = [("success", f"Movimiento {id_g_sel} eliminado correctamente.")]
                         st.rerun()
 
     # ---- Historial de movimientos ----
     st.write("")
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Movimientos registrados</div>
+        <div class="title">Movimientos registrados</div>
         <div class="count-pill">{len(df_presupuesto)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -3582,20 +3678,20 @@ elif modulo.startswith("💰"):
 # =========================================================
 # MÓDULO 5: TAREAS E HITOS (CONTROL DE CRONOGRAMA)
 # =========================================================
-elif modulo.startswith("✅"):
+elif modulo.startswith("5"):
     st.markdown("""
     <div class="banner">
-        <h1>✅ Módulo 5 · Tareas e hitos</h1>
+        <h1>Módulo 5 · Tareas e hitos</h1>
         <p>Planifica las tareas y los hitos de cada proyecto, y detecta a tiempo lo vencido y lo que está por vencer.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="focus-callout">
-        ✅ <strong>Cómo leer el control de cronograma:</strong> cada tarea o hito compara su fecha
+        <strong>Cómo leer el control de cronograma:</strong> cada tarea o hito compara su fecha
         planificada con el día de hoy y con la fecha real de cierre:
         🔴 <strong>vencida</strong> (la fecha pasó y no se ha completado) ·
-        🟠 <strong>vence en ≤7 días</strong> · 🔵 <strong>en plazo</strong> ·
+        🟠 <strong>vence en 7 días</strong> · 🔵 <strong>en plazo</strong> ·
         🟢 <strong>completada a tiempo</strong> · 🟡 <strong>completada con retraso</strong>.
         Los vencimientos quedan registrados en la hoja de alertas para el seguimiento del portafolio.
     </div>
@@ -3655,7 +3751,7 @@ elif modulo.startswith("✅"):
     for col, valor, etiqueta in zip(
         (s1, s2, s3, s4),
         (len(df_tareas_ctrl), completadas_t, vencidas_t, pronto_t),
-        ("Tareas e hitos", "Completadas", "Vencidas", "Vencen en ≤7 días"),
+        ("Tareas e hitos", "Completadas", "Vencidas", "Vencen en 7 días"),
     ):
         with col:
             st.markdown(
@@ -3676,7 +3772,7 @@ elif modulo.startswith("✅"):
             ]
             st.error(
                 "**Tareas e hitos vencidos sin completar**\n\n" + "\n\n".join(lineas)
-                + "\n\n👉 Replanifica la fecha, márcalos como completados o revisa el bloqueo con el responsable."
+                + "\n\nReplanifica la fecha, márcalos como completados o revisa el bloqueo con el responsable."
             )
         if not df_pronto.empty:
             lineas = [
@@ -3685,7 +3781,7 @@ elif modulo.startswith("✅"):
             ]
             st.warning("**Vencen en los próximos 7 días**\n\n" + "\n\n".join(lineas))
         if df_venc.empty and df_pronto.empty:
-            st.success("✅ No hay tareas vencidas ni vencimientos en los próximos 7 días.")
+            st.success("No hay tareas vencidas ni vencimientos en los próximos 7 días.")
         if tarde_t:
             st.caption(f"🟡 {tarde_t} tarea(s) o hito(s) se completaron después de su fecha planificada — el detalle está en el control por proyecto.")
 
@@ -3693,7 +3789,7 @@ elif modulo.startswith("✅"):
     st.write("")
     st.markdown("""
     <div class="table-card-header">
-        <div class="title">🗓️ Cronograma del proyecto</div>
+        <div class="title">Cronograma del proyecto</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -3741,7 +3837,7 @@ elif modulo.startswith("✅"):
     with st.form("form_tarea", clear_on_submit=True):
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">📌</div>
+            <div class="icon">01</div>
             <div>
                 <div class="title">Qué se va a hacer</div>
                 <div class="subtitle">Tarea o hito, proyecto al que pertenece y quién responde por él</div>
@@ -3761,7 +3857,7 @@ elif modulo.startswith("✅"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🗓️</div>
+            <div class="icon">02</div>
             <div>
                 <div class="title">Fechas y estado</div>
                 <div class="subtitle">Fecha comprometida vs. fecha en que realmente se completó</div>
@@ -3780,7 +3876,7 @@ elif modulo.startswith("✅"):
             t_fecha_real = st.date_input("Fecha real", value=date.today())
 
         st.write("")
-        submitted_tarea = st.form_submit_button("💾 Guardar tarea o hito", use_container_width=True)
+        submitted_tarea = st.form_submit_button("Guardar tarea o hito", use_container_width=True)
 
         if submitted_tarea:
             errores_t = []
@@ -3812,17 +3908,17 @@ elif modulo.startswith("✅"):
                 df_tareas_act = pd.concat([df_tareas, pd.DataFrame([nueva_tarea])], ignore_index=True)
                 guardar_hoja("Tareas_Hitos", df_tareas_act)
 
-                mensajes_t = [("success", f"✅ {t_tipo} '{t_nombre}' guardado correctamente.")]
+                mensajes_t = [("success", f"{t_tipo} '{t_nombre}' guardado correctamente.")]
                 if t_completada and t_estado != "Completada":
-                    mensajes_t.append(("info", "💡 Registraste una fecha real pero el estado no es «Completada». Revisa si el estado debería actualizarse."))
+                    mensajes_t.append(("info", "Registraste una fecha real pero el estado no es «Completada». Revisa si el estado debería actualizarse."))
                 elif t_estado == "Completada" and not t_completada:
-                    mensajes_t.append(("info", "💡 El estado es «Completada» pero no registraste la fecha real. Puedes agregarla editando el registro."))
+                    mensajes_t.append(("info", "El estado es «Completada» pero no registraste la fecha real. Puedes agregarla editando el registro."))
                 if t_completada and t_fecha_real > t_fecha_plan:
                     dias_desvio = (t_fecha_real - t_fecha_plan).days
-                    mensajes_t.append(("info", f"💡 Se completó {dias_desvio} día(s) después de lo planificado. La desviación quedará visible en el control de cronograma."))
+                    mensajes_t.append(("info", f"Se completó {dias_desvio} día(s) después de lo planificado. La desviación quedará visible en el control de cronograma."))
                 if t_estado in ("Pendiente", "En curso") and t_fecha_plan < date.today():
                     dias_vencidos = (date.today() - t_fecha_plan).days
-                    mensajes_t.append(("warning", f"⚠️ La fecha planificada ({t_fecha_plan.strftime('%d/%m/%Y')}) ya pasó hace {dias_vencidos} día(s). Considera marcarla como «Retrasada» o replanificarla. Se dejó registro en la hoja de alertas."))
+                    mensajes_t.append(("warning", f"La fecha planificada ({t_fecha_plan.strftime('%d/%m/%Y')}) ya pasó hace {dias_vencidos} día(s). Considera marcarla como «Retrasada» o replanificarla. Se dejó registro en la hoja de alertas."))
                     registrar_alerta("Cronograma", "Precaución" if dias_vencidos <= 5 else "Crítico",
                                      id_resp_t, mapa_nombre_resp.get(id_resp_t, id_resp_t), id_proy_t, "",
                                      dias_vencidos, 5,
@@ -3832,7 +3928,7 @@ elif modulo.startswith("✅"):
 
     # ---- Editar o eliminar ----
     st.write("")
-    with st.expander("✏️ Editar o eliminar una tarea o hito existente", expanded=False):
+    with st.expander("Editar o eliminar una tarea o hito existente", expanded=False):
         if df_tareas.empty:
             st.caption("Todavía no hay tareas o hitos para editar.")
         else:
@@ -3902,9 +3998,9 @@ elif modulo.startswith("✅"):
                 st.write("")
                 b1, b2 = st.columns(2)
                 with b1:
-                    actualizar_t = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    actualizar_t = st.form_submit_button("Guardar cambios", use_container_width=True)
                 with b2:
-                    eliminar_t = st.form_submit_button("🗑️ Eliminar", use_container_width=True)
+                    eliminar_t = st.form_submit_button("Eliminar", use_container_width=True)
 
                 if actualizar_t:
                     if not et_nombre.strip():
@@ -3924,12 +4020,12 @@ elif modulo.startswith("✅"):
                         df_tareas.loc[idx_t, "Estado"] = et_estado
                         guardar_hoja("Tareas_Hitos", df_tareas)
 
-                        mensajes_et = [("success", f"✅ Registro {id_t_sel} actualizado correctamente.")]
+                        mensajes_et = [("success", f"Registro {id_t_sel} actualizado correctamente.")]
                         if et_completada and et_fecha_real > et_fecha_plan:
-                            mensajes_et.append(("info", f"💡 Quedó completada {(et_fecha_real - et_fecha_plan).days} día(s) después de lo planificado."))
+                            mensajes_et.append(("info", f"Quedó completada {(et_fecha_real - et_fecha_plan).days} día(s) después de lo planificado."))
                         if et_estado in ("Pendiente", "En curso") and et_fecha_plan < date.today():
                             dias_vencidos_e = (date.today() - et_fecha_plan).days
-                            mensajes_et.append(("warning", f"⚠️ La fecha planificada ya pasó hace {dias_vencidos_e} día(s) y el registro sigue «{et_estado}». Se dejó registro en la hoja de alertas."))
+                            mensajes_et.append(("warning", f"La fecha planificada ya pasó hace {dias_vencidos_e} día(s) y el registro sigue «{et_estado}». Se dejó registro en la hoja de alertas."))
                             registrar_alerta("Cronograma", "Precaución" if dias_vencidos_e <= 5 else "Crítico",
                                              id_resp_et, mapa_nombre_resp.get(id_resp_et, id_resp_et), id_proy_et, "",
                                              dias_vencidos_e, 5,
@@ -3943,14 +4039,14 @@ elif modulo.startswith("✅"):
                     else:
                         df_tareas = df_tareas.drop(index=fila_t.name)
                         guardar_hoja("Tareas_Hitos", df_tareas)
-                        st.session_state["flash_tarea"] = [("success", f"🗑️ Registro {id_t_sel} eliminado correctamente.")]
+                        st.session_state["flash_tarea"] = [("success", f"Registro {id_t_sel} eliminado correctamente.")]
                         st.rerun()
 
     # ---- Listado ----
     st.write("")
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Tareas e hitos registrados</div>
+        <div class="title">Tareas e hitos registrados</div>
         <div class="count-pill">{len(df_tareas_ctrl)} en total</div>
     </div>
     """, unsafe_allow_html=True)
@@ -4004,19 +4100,19 @@ elif modulo.startswith("✅"):
 # =========================================================
 # MÓDULO 6: RIESGOS (MATRIZ Y CONTROL DE EXPOSICIÓN)
 # =========================================================
-elif modulo.startswith("⚠️"):
+elif modulo.startswith("6"):
     st.markdown("""
     <div class="banner">
-        <h1>⚠️ Módulo 6 · Riesgos</h1>
+        <h1>Módulo 6 · Riesgos</h1>
         <p>Registra los riesgos de cada proyecto, evalúa su exposición y vigila los críticos antes de que se materialicen.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="focus-callout">
-        ⚠️ <strong>Cómo leer el control de riesgos:</strong> el nivel de cada riesgo es
+        <strong>Cómo leer el control de riesgos:</strong> el nivel de cada riesgo es
         probabilidad × impacto (1–25): 🟢 <strong>Bajo</strong> (&lt;8) · 🟡 <strong>Medio</strong> (8–14) ·
-        🔴 <strong>Alto</strong> (≥15). Un riesgo está <strong>activo</strong> mientras siga
+        🔴 <strong>Alto</strong> (15). Un riesgo está <strong>activo</strong> mientras siga
         «Abierto» o «En mitigación». Los riesgos altos activos y los que se materializan
         quedan registrados en la hoja de alertas.
     </div>
@@ -4055,22 +4151,22 @@ elif modulo.startswith("⚠️"):
             ]
             st.error(
                 "**Riesgos de nivel Alto sin resolver**\n\n" + "\n\n".join(lineas)
-                + "\n\n👉 Prioriza sus planes de mitigación y revísalos en cada comité de proyecto."
+                + "\n\nPrioriza sus planes de mitigación y revísalos en cada comité de proyecto."
             )
         if not df_materializados.empty:
             lineas = [
-                f"⚠️ **{r.ID_Proyecto}** · {r.Descripcion_Riesgo} — plan en curso: {r.Plan_Mitigacion}"
+                f"**{r.ID_Proyecto}** · {r.Descripcion_Riesgo} — plan en curso: {r.Plan_Mitigacion}"
                 for r in df_materializados.sort_values("Nivel_Riesgo", ascending=False).itertuples()
             ]
             st.warning("**Riesgos materializados (el problema ya ocurrió)**\n\n" + "\n\n".join(lineas))
         if df_altos_activos.empty and df_materializados.empty:
-            st.success("✅ No hay riesgos de nivel Alto activos ni riesgos materializados.")
+            st.success("No hay riesgos de nivel Alto activos ni riesgos materializados.")
 
     # ---- Matriz probabilidad × impacto ----
     st.write("")
     st.markdown("""
     <div class="table-card-header">
-        <div class="title">🎯 Matriz de riesgos activos (probabilidad × impacto)</div>
+        <div class="title">Matriz de riesgos activos (probabilidad × impacto)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -4097,11 +4193,11 @@ elif modulo.startswith("⚠️"):
             for prob_ in range(1, 6):
                 nivel_celda = prob_ * imp_
                 if nivel_celda >= 15:
-                    bg, fg = "rgba(255,84,112,0.18)", "#FF8FA6"
+                    bg, fg = "var(--rojo-bg)", "var(--rojo)"
                 elif nivel_celda >= 8:
-                    bg, fg = "rgba(255,200,87,0.16)", "#FFD37A"
+                    bg, fg = "var(--ambar-bg)", "var(--ambar)"
                 else:
-                    bg, fg = "rgba(78,226,142,0.16)", "#6FEBA8"
+                    bg, fg = "var(--verde-bg)", "var(--verde)"
                 n = int(conteo_matriz.get((prob_, imp_), 0))
                 contenido = str(n) if n else "–"
                 peso = "800" if n else "400"
@@ -4110,18 +4206,18 @@ elif modulo.startswith("⚠️"):
                     f'border-radius:8px;font-weight:{peso};font-size:0.95rem;">{contenido}</td>'
                 )
             filas_html.append(
-                f'<tr><td style="text-align:right;padding-right:10px;color:#93A5D6;'
+                f'<tr><td style="text-align:right;padding-right:10px;color:var(--texto-suave);'
                 f'font-size:0.78rem;font-weight:600;white-space:nowrap;">{imp_} · {etiquetas_imp[imp_]}</td>'
                 + "".join(celdas) + "</tr>"
             )
         encabezados_html = "".join(
-            f'<td style="text-align:center;color:#93A5D6;font-size:0.78rem;font-weight:600;padding:6px 0;">{p_} · {et}</td>'
+            f'<td style="text-align:center;color:var(--texto-suave);font-size:0.78rem;font-weight:600;padding:6px 0;">{p_} · {et}</td>'
             for p_, et in zip(range(1, 6), etiquetas_prob)
         )
         st.markdown(
             f'<table style="width:100%;border-collapse:separate;border-spacing:5px;table-layout:fixed;">'
             f'<tr><td style="width:110px;"></td>{encabezados_html}</tr>{"".join(filas_html)}</table>'
-            f'<div style="display:flex;justify-content:space-between;color:#7C8DBC;font-size:0.75rem;margin-top:2px;">'
+            f'<div style="display:flex;justify-content:space-between;color:var(--texto-suave);font-size:0.75rem;margin-top:2px;">'
             f'<span>↑ Impacto</span><span>Probabilidad →</span></div>',
             unsafe_allow_html=True,
         )
@@ -4135,7 +4231,7 @@ elif modulo.startswith("⚠️"):
         st.write("")
         st.markdown("""
         <div class="table-card-header">
-            <div class="title">📌 Riesgos activos priorizados</div>
+            <div class="title">Riesgos activos priorizados</div>
         </div>
         """, unsafe_allow_html=True)
         columnas_inv = ["Nombre_Proyecto", "Descripcion_Riesgo", "Probabilidad", "Impacto", "Nivel_Riesgo", "Nivel", "Plan_Mitigacion", "Nombre_Responsable", "Estado"]
@@ -4172,7 +4268,7 @@ elif modulo.startswith("⚠️"):
     with st.form("form_riesgo", clear_on_submit=True):
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🔍</div>
+            <div class="icon">01</div>
             <div>
                 <div class="title">Identificación del riesgo</div>
                 <div class="subtitle">Qué podría salir mal y en qué proyecto</div>
@@ -4184,7 +4280,7 @@ elif modulo.startswith("⚠️"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🎯</div>
+            <div class="icon">02</div>
             <div>
                 <div class="title">Evaluación</div>
                 <div class="subtitle">Qué tan probable es y qué tanto afectaría al proyecto</div>
@@ -4205,7 +4301,7 @@ elif modulo.startswith("⚠️"):
 
         st.markdown("""
         <div class="form-section-header">
-            <div class="icon">🛡️</div>
+            <div class="icon">03</div>
             <div>
                 <div class="title">Respuesta al riesgo</div>
                 <div class="subtitle">Qué se hará para evitarlo o reducir su efecto, y quién responde</div>
@@ -4220,7 +4316,7 @@ elif modulo.startswith("⚠️"):
             r_estado = st.selectbox("Estado *", ESTADOS_RIESGO)
 
         st.write("")
-        submitted_riesgo = st.form_submit_button("💾 Guardar riesgo", use_container_width=True)
+        submitted_riesgo = st.form_submit_button("Guardar riesgo", use_container_width=True)
 
         if submitted_riesgo:
             errores_r = []
@@ -4261,15 +4357,15 @@ elif modulo.startswith("⚠️"):
                 df_riesgos_act = pd.concat([df_riesgos, pd.DataFrame([nuevo_riesgo])], ignore_index=True)
                 guardar_hoja("Riesgos", df_riesgos_act)
 
-                mensajes_r = [("success", f"✅ Riesgo guardado con nivel {nivel_txt} ({nivel_num}/25).")]
+                mensajes_r = [("success", f"Riesgo guardado con nivel {nivel_txt} ({nivel_num}/25).")]
                 if nivel_txt == "Alto" and r_estado in ESTADOS_ACTIVOS_RIESGO:
-                    mensajes_r.append(("warning", "⚠️ Este riesgo quedó en nivel ALTO y sigue activo. Dale prioridad al plan de mitigación. Se dejó registro en la hoja de alertas."))
+                    mensajes_r.append(("warning", "Este riesgo quedó en nivel ALTO y sigue activo. Dale prioridad al plan de mitigación. Se dejó registro en la hoja de alertas."))
                     registrar_alerta("Riesgos", "Crítico" if nivel_num >= 20 else "Precaución",
                                      id_riesgo_nuevo, mapa_nombre_proy_r.get(id_proy_r, id_proy_r), id_proy_r, "",
                                      nivel_num, 15,
                                      f"Riesgo de nivel Alto (P×I={nivel_num}) en {id_proy_r}: {r_descripcion.strip()[:120]}")
                 if r_estado == "Materializado":
-                    mensajes_r.append(("error", "🚨 El riesgo se registró como materializado: el problema ya ocurrió. Ejecuta el plan de mitigación y evalúa el impacto en el proyecto. Se dejó registro en la hoja de alertas."))
+                    mensajes_r.append(("error", "El riesgo se registró como materializado: el problema ya ocurrió. Ejecuta el plan de mitigación y evalúa el impacto en el proyecto. Se dejó registro en la hoja de alertas."))
                     registrar_alerta("Riesgos", "Crítico",
                                      id_riesgo_nuevo, mapa_nombre_proy_r.get(id_proy_r, id_proy_r), id_proy_r, "",
                                      nivel_num, 15,
@@ -4279,7 +4375,7 @@ elif modulo.startswith("⚠️"):
 
     # ---- Editar o eliminar ----
     st.write("")
-    with st.expander("✏️ Editar o eliminar un riesgo existente", expanded=False):
+    with st.expander("Editar o eliminar un riesgo existente", expanded=False):
         if df_riesgos.empty:
             st.caption("Todavía no hay riesgos para editar.")
         else:
@@ -4347,9 +4443,9 @@ elif modulo.startswith("⚠️"):
                 st.write("")
                 b1, b2 = st.columns(2)
                 with b1:
-                    actualizar_r = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    actualizar_r = st.form_submit_button("Guardar cambios", use_container_width=True)
                 with b2:
-                    eliminar_r = st.form_submit_button("🗑️ Eliminar riesgo", use_container_width=True)
+                    eliminar_r = st.form_submit_button("Eliminar riesgo", use_container_width=True)
 
                 if actualizar_r:
                     if not er_descripcion.strip():
@@ -4379,19 +4475,19 @@ elif modulo.startswith("⚠️"):
                         df_riesgos.loc[idx_r, "Estado"] = er_estado
                         guardar_hoja("Riesgos", df_riesgos)
 
-                        mensajes_er = [("success", f"✅ Riesgo {id_r_sel} actualizado (nivel {nivel_e_txt}).")]
+                        mensajes_er = [("success", f"Riesgo {id_r_sel} actualizado (nivel {nivel_e_txt}).")]
                         alto_activo_antes = nivel_anterior_txt == "Alto" and estado_anterior in ESTADOS_ACTIVOS_RIESGO
                         alto_activo_ahora = nivel_e_txt == "Alto" and er_estado in ESTADOS_ACTIVOS_RIESGO
                         if alto_activo_ahora and not alto_activo_antes:
-                            mensajes_er.append(("warning", "⚠️ El riesgo quedó en nivel ALTO y sigue activo. Dale prioridad al plan de mitigación. Se dejó registro en la hoja de alertas."))
+                            mensajes_er.append(("warning", "El riesgo quedó en nivel ALTO y sigue activo. Dale prioridad al plan de mitigación. Se dejó registro en la hoja de alertas."))
                             registrar_alerta("Riesgos", "Crítico" if nivel_e >= 20 else "Precaución",
                                              id_r_sel, mapa_nombre_proy_r.get(id_proy_er, id_proy_er), id_proy_er, "",
                                              nivel_e, 15,
                                              f"Riesgo de nivel Alto (P×I={nivel_e}) en {id_proy_er}: {er_descripcion.strip()[:120]}")
                         elif alto_activo_ahora:
-                            mensajes_er.append(("warning", "⚠️ El riesgo sigue en nivel ALTO y activo. Dale prioridad al plan de mitigación."))
+                            mensajes_er.append(("warning", "El riesgo sigue en nivel ALTO y activo. Dale prioridad al plan de mitigación."))
                         if er_estado == "Materializado" and estado_anterior != "Materializado":
-                            mensajes_er.append(("error", "🚨 El riesgo pasó a materializado: el problema ya ocurrió. Ejecuta el plan de mitigación y evalúa el impacto. Se dejó registro en la hoja de alertas."))
+                            mensajes_er.append(("error", "El riesgo pasó a materializado: el problema ya ocurrió. Ejecuta el plan de mitigación y evalúa el impacto. Se dejó registro en la hoja de alertas."))
                             registrar_alerta("Riesgos", "Crítico",
                                              id_r_sel, mapa_nombre_proy_r.get(id_proy_er, id_proy_er), id_proy_er, "",
                                              nivel_e, 15,
@@ -4405,14 +4501,14 @@ elif modulo.startswith("⚠️"):
                     else:
                         df_riesgos = df_riesgos.drop(index=fila_r.name)
                         guardar_hoja("Riesgos", df_riesgos)
-                        st.session_state["flash_riesgo"] = [("success", f"🗑️ Riesgo {id_r_sel} eliminado correctamente.")]
+                        st.session_state["flash_riesgo"] = [("success", f"Riesgo {id_r_sel} eliminado correctamente.")]
                         st.rerun()
 
     # ---- Listado ----
     st.write("")
     st.markdown(f"""
     <div class="table-card-header">
-        <div class="title">📋 Riesgos registrados</div>
+        <div class="title">Riesgos registrados</div>
         <div class="count-pill">{len(df_riesgos)} en total</div>
     </div>
     """, unsafe_allow_html=True)
