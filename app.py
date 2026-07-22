@@ -5230,8 +5230,15 @@ MOTOR_ASISTENTE = crear_motor_asistente()
 if es_pm:
     st.markdown("""
     <style>
+    /* Se eleva sobre la barra que Streamlit Cloud pinta en esa misma esquina
+       ("Manage app" para la dueña, la insignia "Hosted with Streamlit" para
+       quien visita): la dibuja el contenedor de la nube, fuera de la app, así
+       que la única forma de no quedar tapado es dejarle ese hueco libre. */
     .st-key-boton_asistente {
-        position: fixed; right: 26px; bottom: 22px; z-index: 999; width: auto;
+        position: fixed; right: 26px; bottom: 78px; z-index: 999; width: auto;
+    }
+    @media (max-width: 640px) {
+        .st-key-boton_asistente { right: 12px; bottom: 70px; }
     }
     .st-key-boton_asistente button {
         background: linear-gradient(135deg, var(--verde-vivo), var(--celeste));
