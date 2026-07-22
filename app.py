@@ -1715,7 +1715,6 @@ with st.sidebar:
                 "4 · Presupuesto detallado",
                 "5 · Tareas e hitos",
                 "6 · Riesgos",
-                "7 · Asistente",
             ],
         )
     else:
@@ -4609,16 +4608,45 @@ elif modulo.startswith("6"):
 
 
 # =========================================================
-# MÓDULO: ASISTENTE (consultas en lenguaje natural)
+# ASISTENTE DEL PORTAFOLIO · MOTOR DE CONSULTAS
 # =========================================================
-elif modulo.startswith("7"):
-    st.markdown("""
-    <div class="banner">
-        <h1>Asistente del portafolio</h1>
-        <p>Pregunta en lenguaje natural sobre proyectos, cronograma, presupuesto, equipo y riesgos</p>
-    </div>
-    """, unsafe_allow_html=True)
+NOMBRE_ASISTENTE = "Asistente del portafolio"
+EJEMPLOS_ASISTENTE = [
+    "¿Qué tareas tenemos pendientes en el proyecto de Power BI?",
+    "¿Cuál es el presupuesto ejecutado del CRM y en qué rubro nos estamos pasando?",
+    "¿Quién está sobrecargado esta semana?",
+    "¿Qué riesgos altos hay abiertos en el portafolio?",
+    "¿Qué proyectos van con retraso y de quién dependen?",
+]
 
+
+try:
+    # También a nivel de módulo: la ventana necesita sus clases de error.
+    import anthropic
+except ModuleNotFoundError:
+    anthropic = None
+
+
+def clave_asistente():
+    """Lee la clave de la API de los secrets de Streamlit o del entorno."""
+    try:
+        if "ANTHROPIC_API_KEY" in st.secrets:
+            return str(st.secrets["ANTHROPIC_API_KEY"]).strip()
+    except Exception:
+        pass
+    return os.environ.get("ANTHROPIC_API_KEY", "").strip()
+
+
+CLAVE_ASISTENTE = clave_asistente()
+
+
+def crear_motor_asistente():
+    """Prepara el asistente y devuelve la función que responde preguntas.
+
+    Todo vive dentro de esta función a propósito: el script de Streamlit es un
+    único espacio de nombres, y nombres genéricos como `texto` o `datos` se
+    pisarían con los de los módulos. Devuelve None si no hay clave configurada.
+    """
     # El asistente NO recibe la base de datos completa ni inventa cifras: recibe
     # un catálogo de consultas (herramientas) que leen las mismas hojas que
     # alimentan el tablero de Power BI. El modelo interpreta la pregunta, elige
@@ -4630,36 +4658,12 @@ elif modulo.startswith("7"):
     MAX_VUELTAS = 6          # tope de consultas encadenadas por pregunta
     MAX_FILAS_RESPUESTA = 60  # tope de filas que se entregan al asistente
 
-    def clave_asistente():
-        """Lee la clave de la API de los secrets de Streamlit o del entorno."""
-        try:
-            if "ANTHROPIC_API_KEY" in st.secrets:
-                return str(st.secrets["ANTHROPIC_API_KEY"]).strip()
-        except Exception:
-            pass
-        return os.environ.get("ANTHROPIC_API_KEY", "").strip()
-
-    _clave = clave_asistente()
-    if not _clave:
-        st.warning("El asistente todavía no está configurado.")
-        st.markdown(
-            "Para activarlo hace falta una clave de acceso al modelo de lenguaje:\n\n"
-            "1. Crea una clave en **console.anthropic.com → API keys**.\n"
-            "2. En local, guárdala en `.streamlit/secrets.toml`:\n"
-            "   ```toml\n   ANTHROPIC_API_KEY = \"sk-ant-...\"\n   ```\n"
-            "3. En la versión publicada, pégala en **Settings → Secrets** de Streamlit Cloud.\n\n"
-            "La clave nunca se guarda en el código ni viaja al repositorio."
-        )
-        st.stop()
-
+    if not CLAVE_ASISTENTE:
+        return None
     try:
         import anthropic
     except ModuleNotFoundError:
-        st.error(
-            "Falta la librería del asistente. Instálala con "
-            "`python -m pip install anthropic` y vuelve a abrir la plataforma."
-        )
-        st.stop()
+        return None
 
     hoy_asis = date.today()
 
@@ -5156,7 +5160,7 @@ Umbrales que maneja la plataforma:
     if "asis_mensajes" not in st.session_state:
         st.session_state["asis_mensajes"] = []
 
-    cliente_asis = anthropic.Anthropic(api_key=_clave)
+    cliente_asis = anthropic.Anthropic(api_key=CLAVE_ASISTENTE)
 
     def preguntar_al_asistente(pregunta):
         """Ciclo del agente: consulta -> ejecuta -> vuelve a consultar hasta responder.
@@ -5211,81 +5215,130 @@ Umbrales que maneja la plataforma:
         return ("La consulta se ha alargado demasiado. Prueba a preguntarlo de forma más concreta.",
                 consultas_usadas)
 
-    # -----------------------------------------------------
-    # Interfaz de conversación
-    # -----------------------------------------------------
-    col_intro, col_limpiar = st.columns([4, 1])
-    with col_intro:
-        st.caption(
-            "El asistente consulta la misma base de datos que alimenta el tablero directivo, "
-            "así que las cifras que da son las reales del portafolio."
-        )
-    with col_limpiar:
-        if st.button("Nueva conversación", use_container_width=True):
-            st.session_state["asis_mensajes"] = []
-            st.session_state.pop("asis_consultas", None)
-            st.rerun()
+    return preguntar_al_asistente
 
-    if not st.session_state["asis_mensajes"]:
-        with st.expander("Ejemplos de lo que puedes preguntar", expanded=True):
+
+MOTOR_ASISTENTE = crear_motor_asistente()
+
+
+# =========================================================
+# ASISTENTE DEL PORTAFOLIO · VENTANA FLOTANTE
+# =========================================================
+# Streamlit no trae widgets flotantes: el botón se fija con CSS sobre un
+# contenedor con key propia, y la conversación vive en un st.dialog porque un
+# desplegable normal se cerraría en cada recarga (y cada pregunta recarga).
+if es_pm:
+    st.markdown("""
+    <style>
+    .st-key-boton_asistente {
+        position: fixed; right: 26px; bottom: 22px; z-index: 999; width: auto;
+    }
+    .st-key-boton_asistente button {
+        background: linear-gradient(135deg, var(--verde-vivo), var(--celeste));
+        color: #0E1840 !important; font-weight: 700; border: none;
+        border-radius: 26px; padding: 11px 22px;
+        box-shadow: 0 10px 26px var(--sombra);
+    }
+    .st-key-boton_asistente button:hover { filter: brightness(1.07); }
+    .asis-pista { color: var(--texto-suave); font-size: 0.9rem; margin-bottom: 4px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def limpiar_conversacion():
+        st.session_state["asis_mensajes"] = []
+        st.session_state.pop("asis_consultas", None)
+
+    @st.dialog(NOMBRE_ASISTENTE, width="large")
+    def ventana_asistente():
+        if MOTOR_ASISTENTE is None:
+            st.warning("El asistente todavía no está configurado.")
             st.markdown(
-                "- ¿Qué tareas tenemos pendientes en el proyecto de Power BI?\n"
-                "- ¿Cuál es el presupuesto ejecutado del CRM y en qué rubro nos estamos pasando?\n"
-                "- ¿Quién está sobrecargado esta semana?\n"
-                "- ¿Qué riesgos altos hay abiertos en el portafolio?\n"
-                "- ¿Qué proyectos van con retraso y de quién dependen?"
+                "Hace falta una clave de acceso al modelo de lenguaje:\n\n"
+                "1. Crea una clave en **console.anthropic.com → API keys**.\n"
+                "2. En local, guárdala en `.streamlit/secrets.toml` como "
+                "`ANTHROPIC_API_KEY = \"sk-ant-...\"`.\n"
+                "3. En la versión publicada, pégala en **Settings → Secrets**.\n\n"
+                "La clave nunca se guarda en el código ni viaja al repositorio."
             )
+            return
 
-    # Historial: se muestran solo las preguntas y las respuestas redactadas.
-    # Los resultados de las consultas quedan detrás, en el registro de trazabilidad.
-    consultas_por_turno = st.session_state.get("asis_consultas", {})
-    indice_respuesta = 0
-    for mensaje in st.session_state["asis_mensajes"]:
-        contenido = mensaje["content"]
-        if mensaje["role"] == "user":
-            if isinstance(contenido, str):
-                with st.chat_message("user"):
-                    st.markdown(contenido)
-            continue
-        texto = "\n\n".join(
-            b.text for b in contenido
-            if getattr(b, "type", "") == "text" and getattr(b, "text", "").strip()
+        st.caption(
+            "Consulto la misma base de datos que alimenta el tablero directivo, "
+            "así que las cifras son las reales del portafolio."
         )
-        if not texto:
-            continue
-        with st.chat_message("assistant"):
-            st.markdown(texto)
-            registro = consultas_por_turno.get(indice_respuesta)
-            if registro:
-                with st.expander("Consultas utilizadas para esta respuesta"):
-                    for nombre, argumentos in registro:
-                        detalle = ", ".join(f"{k}={v}" for k, v in argumentos.items()) or "sin filtros"
-                        st.markdown(f"- `{nombre}` ({detalle})")
-        indice_respuesta += 1
 
-    pregunta_usuario = st.chat_input("Escribe tu pregunta sobre el portafolio")
-    if pregunta_usuario:
-        with st.chat_message("user"):
-            st.markdown(pregunta_usuario)
-        marca = len(st.session_state["asis_mensajes"])
-        aviso_error = None
-        with st.chat_message("assistant"):
-            with st.spinner("Consultando los datos del portafolio…"):
-                try:
-                    _, consultas = preguntar_al_asistente(pregunta_usuario)
+        if not st.session_state.get("asis_mensajes"):
+            st.markdown('<div class="asis-pista">Puedes preguntarme cosas como:</div>',
+                        unsafe_allow_html=True)
+            for ejemplo in EJEMPLOS_ASISTENTE:
+                st.markdown(f"- {ejemplo}")
+
+        # Historial: solo preguntas y respuestas redactadas. Los resultados de
+        # las consultas quedan detrás, en el registro de trazabilidad.
+        consultas_por_turno = st.session_state.get("asis_consultas", {})
+        indice_respuesta = 0
+        for mensaje in st.session_state.get("asis_mensajes", []):
+            contenido = mensaje["content"]
+            if mensaje["role"] == "user":
+                if isinstance(contenido, str):
+                    with st.chat_message("user"):
+                        st.markdown(contenido)
+                continue
+            redactado = "\n\n".join(
+                b.text for b in contenido
+                if getattr(b, "type", "") == "text" and getattr(b, "text", "").strip()
+            )
+            if not redactado:
+                continue
+            with st.chat_message("assistant"):
+                st.markdown(redactado)
+                registro = consultas_por_turno.get(indice_respuesta)
+                if registro:
+                    with st.expander("Consultas utilizadas para esta respuesta"):
+                        for nombre, argumentos in registro:
+                            detalle = ", ".join(f"{k}={v}" for k, v in argumentos.items()) or "sin filtros"
+                            st.markdown(f"- `{nombre}` ({detalle})")
+            indice_respuesta += 1
+
+        pregunta = st.chat_input("Escribe tu pregunta sobre el portafolio")
+        if pregunta:
+            with st.chat_message("user"):
+                st.markdown(pregunta)
+            marca = len(st.session_state["asis_mensajes"])
+            with st.chat_message("assistant"):
+                with st.spinner("Consultando los datos del portafolio…"):
+                    aviso_error = None
+                    try:
+                        redactado, consultas = MOTOR_ASISTENTE(pregunta)
+                    except anthropic.AuthenticationError:
+                        aviso_error = "La clave de acceso no es válida. Revísala en los secrets de la aplicación."
+                    except anthropic.RateLimitError:
+                        aviso_error = "Demasiadas consultas seguidas. Espera unos segundos y vuelve a preguntar."
+                    except anthropic.APIConnectionError:
+                        aviso_error = "No hay conexión con el servicio del asistente. Revisa tu red e inténtalo de nuevo."
+                    except anthropic.APIStatusError as exc:
+                        aviso_error = f"El servicio del asistente devolvió un error ({exc.status_code}). Inténtalo de nuevo."
+                if aviso_error:
+                    # Se descarta la pregunta fallida para no dejar la conversación
+                    # a medias (rompería la siguiente llamada).
+                    del st.session_state["asis_mensajes"][marca:]
+                    st.error(aviso_error)
+                else:
                     st.session_state.setdefault("asis_consultas", {})[indice_respuesta] = consultas
-                except anthropic.AuthenticationError:
-                    aviso_error = "La clave de acceso no es válida. Revísala en los secrets de la aplicación."
-                except anthropic.RateLimitError:
-                    aviso_error = "Demasiadas consultas seguidas. Espera unos segundos y vuelve a preguntar."
-                except anthropic.APIConnectionError:
-                    aviso_error = "No hay conexión con el servicio del asistente. Revisa tu red e inténtalo de nuevo."
-                except anthropic.APIStatusError as exc:
-                    aviso_error = f"El servicio del asistente devolvió un error ({exc.status_code}). Inténtalo de nuevo."
-        if aviso_error:
-            # Se descarta la pregunta fallida para no dejar la conversación a medias
-            # (una llamada interrumpida deja mensajes sin su resultado y rompería la siguiente).
-            del st.session_state["asis_mensajes"][marca:]
-            st.error(aviso_error)
-        else:
-            st.rerun()
+                    st.markdown(redactado)
+                    if consultas:
+                        with st.expander("Consultas utilizadas para esta respuesta"):
+                            for nombre, argumentos in consultas:
+                                detalle = ", ".join(f"{k}={v}" for k, v in argumentos.items()) or "sin filtros"
+                                st.markdown(f"- `{nombre}` ({detalle})")
+
+        if st.session_state.get("asis_mensajes"):
+            st.button("Nueva conversación", on_click=limpiar_conversacion,
+                      key="asis_limpiar", use_container_width=True)
+
+    with st.container(key="boton_asistente"):
+        # El diálogo se abre llamando a la función en el flujo del script;
+        # hacerlo desde un on_click no lo abre.
+        if st.button("Asistente del portafolio", key="asis_abrir",
+                     help="Pregunta en lenguaje natural sobre el portafolio"):
+            ventana_asistente()
