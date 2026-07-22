@@ -5228,6 +5228,8 @@ MOTOR_ASISTENTE = crear_motor_asistente()
 # contenedor con key propia, y la conversación vive en un st.dialog porque un
 # desplegable normal se cerraría en cada recarga (y cada pregunta recarga).
 if es_pm:
+    from streamlit.components.v1 import html as componente_html
+
     st.markdown("""
     <style>
     /* Se eleva sobre la barra que Streamlit Cloud pinta en esa misma esquina
@@ -5288,11 +5290,13 @@ if es_pm:
             "así que las cifras son las reales del portafolio."
         )
 
-        # Los huecos se reservan ANTES del campo de escritura para que el hilo
+        # El hueco se reserva ANTES del campo de escritura para que el hilo
         # quede arriba y el campo abajo, como en cualquier chat. Además permite
         # decidir si se pintan los ejemplos ya sabiendo si hubo pregunta.
-        zona_ejemplos = st.container()
-        zona_chat = st.container()
+        # La altura fija hace que el hilo se desplace DENTRO de la caja en vez
+        # de estirar la ventana, y autoscroll la baja sola a la última
+        # respuesta para no tener que buscarla a mano.
+        zona_chat = st.container(height=430, autoscroll=True, key="hilo_asistente")
 
         pregunta = st.chat_input("Escribe tu pregunta sobre el portafolio")
 
@@ -5319,18 +5323,17 @@ if es_pm:
                     respuestas_redactadas(st.session_state["asis_mensajes"]) - 1
                 ] = consultas
 
-        # Las sugerencias solo acompañan mientras no hay conversación: en cuanto
-        # se pregunta algo desaparecen y dejan sitio al hilo.
-        if not st.session_state.get("asis_mensajes"):
-            with zona_ejemplos:
+        # Dentro de la caja: las sugerencias solo mientras no hay conversación
+        # (al preguntar desaparecen), y después el hilo. Del historial se
+        # muestran solo preguntas y respuestas redactadas; los resultados de las
+        # consultas quedan detrás, en el registro de trazabilidad.
+        with zona_chat:
+            if not st.session_state.get("asis_mensajes"):
                 st.markdown('<div class="asis-pista">Puedes preguntarme cosas como:</div>',
                             unsafe_allow_html=True)
                 for ejemplo in EJEMPLOS_ASISTENTE:
                     st.markdown(f"- {ejemplo}")
 
-        # Historial: solo preguntas y respuestas redactadas. Los resultados de
-        # las consultas quedan detrás, en el registro de trazabilidad.
-        with zona_chat:
             consultas_por_turno = st.session_state.get("asis_consultas", {})
             indice_respuesta = 0
             for mensaje in st.session_state.get("asis_mensajes", []):
@@ -5357,6 +5360,29 @@ if es_pm:
                 indice_respuesta += 1
             if aviso_error:
                 st.error(aviso_error)
+
+        # El autoscroll propio del contenedor no llega a dispararse aquí (el
+        # hilo se repinta entero en cada recarga, no se añade poco a poco), así
+        # que se baja la caja a mano. Se reintenta porque Streamlit todavía
+        # puede estar pintando cuando llega la orden.
+        if st.session_state.get("asis_mensajes"):
+            # El número de turno tiene que aparecer en el guion: si el contenido
+            # no cambia, Streamlit reutiliza el componente y la orden no se
+            # vuelve a ejecutar (se quedaría bajando solo en la primera pregunta).
+            componente_html(
+                f"""
+                <script>
+                const turno = {len(st.session_state["asis_mensajes"])};
+                const bajar = () => {{
+                    const caja = window.parent.document.querySelector('.st-key-hilo_asistente');
+                    if (caja) caja.scrollTop = caja.scrollHeight;
+                }};
+                bajar();
+                [80, 250, 600].forEach(ms => setTimeout(bajar, ms));
+                </script>
+                """,
+                height=0,
+            )
 
         if st.session_state.get("asis_mensajes"):
             st.button("Nueva conversación", on_click=limpiar_conversacion,
