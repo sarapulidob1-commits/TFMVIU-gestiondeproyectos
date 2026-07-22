@@ -1715,6 +1715,7 @@ with st.sidebar:
                 "4 · Presupuesto detallado",
                 "5 · Tareas e hitos",
                 "6 · Riesgos",
+                "7 · Asistente",
             ],
         )
     else:
@@ -4605,3 +4606,686 @@ elif modulo.startswith("6"):
             },
         )
         st.caption(f"Mostrando {len(df_filtrado_r)} de {len(df_riesgos)} riesgo(s)")
+
+
+# =========================================================
+# MÓDULO: ASISTENTE (consultas en lenguaje natural)
+# =========================================================
+elif modulo.startswith("7"):
+    st.markdown("""
+    <div class="banner">
+        <h1>Asistente del portafolio</h1>
+        <p>Pregunta en lenguaje natural sobre proyectos, cronograma, presupuesto, equipo y riesgos</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # El asistente NO recibe la base de datos completa ni inventa cifras: recibe
+    # un catálogo de consultas (herramientas) que leen las mismas hojas que
+    # alimentan el tablero de Power BI. El modelo interpreta la pregunta, elige
+    # la consulta y redacta la respuesta con los datos que esa consulta devuelve.
+    MODELO_ASISTENTE = "claude-opus-4-8"
+    # Profundidad de razonamiento: "low" responde más rápido, "high" razona más
+    # en preguntas comparativas. "medium" es el equilibrio para consultas de datos.
+    ESFUERZO_ASISTENTE = "medium"
+    MAX_VUELTAS = 6          # tope de consultas encadenadas por pregunta
+    MAX_FILAS_RESPUESTA = 60  # tope de filas que se entregan al asistente
+
+    def clave_asistente():
+        """Lee la clave de la API de los secrets de Streamlit o del entorno."""
+        try:
+            if "ANTHROPIC_API_KEY" in st.secrets:
+                return str(st.secrets["ANTHROPIC_API_KEY"]).strip()
+        except Exception:
+            pass
+        return os.environ.get("ANTHROPIC_API_KEY", "").strip()
+
+    _clave = clave_asistente()
+    if not _clave:
+        st.warning("El asistente todavía no está configurado.")
+        st.markdown(
+            "Para activarlo hace falta una clave de acceso al modelo de lenguaje:\n\n"
+            "1. Crea una clave en **console.anthropic.com → API keys**.\n"
+            "2. En local, guárdala en `.streamlit/secrets.toml`:\n"
+            "   ```toml\n   ANTHROPIC_API_KEY = \"sk-ant-...\"\n   ```\n"
+            "3. En la versión publicada, pégala en **Settings → Secrets** de Streamlit Cloud.\n\n"
+            "La clave nunca se guarda en el código ni viaja al repositorio."
+        )
+        st.stop()
+
+    try:
+        import anthropic
+    except ModuleNotFoundError:
+        st.error(
+            "Falta la librería del asistente. Instálala con "
+            "`python -m pip install anthropic` y vuelve a abrir la plataforma."
+        )
+        st.stop()
+
+    hoy_asis = date.today()
+
+    # -----------------------------------------------------
+    # Utilidades de formato y búsqueda
+    # -----------------------------------------------------
+    def num(valor):
+        """Convierte a número tratando las celdas vacías del Excel como 0."""
+        v = pd.to_numeric(valor, errors="coerce")
+        return 0.0 if pd.isna(v) else float(v)
+
+    def texto(valor):
+        """Devuelve el texto de una celda, o un guion si viene vacía."""
+        if valor is None or (not isinstance(valor, str) and pd.isna(valor)):
+            return "—"
+        limpio = str(valor).strip()
+        return limpio if limpio and limpio.lower() not in ("nan", "nat", "none") else "—"
+
+    def eur(valor):
+        """Formatea un importe al estilo español: 25.000 €."""
+        return f"{num(valor):,.0f} €".replace(",", ".")
+
+    def fecha_corta(valor):
+        texto = str(valor)[:10]
+        return texto if texto and texto.lower() not in ("nan", "nat", "none") else "—"
+
+    def resolver_proyectos(texto):
+        """Traduce lo que escribió el usuario ('el ERP') a filas de Proyectos.
+
+        Busca primero por ID exacto y luego por coincidencia parcial del nombre,
+        para que el asistente no tenga que conocer los códigos PRJ-XXX.
+        """
+        if df_proyectos.empty:
+            return df_proyectos
+        clave = str(texto or "").strip().lower()
+        if not clave:
+            return df_proyectos
+        por_id = df_proyectos[df_proyectos["ID_Proyecto"].astype(str).str.lower() == clave]
+        if not por_id.empty:
+            return por_id
+        return df_proyectos[
+            df_proyectos["Nombre_Proyecto"].astype(str).str.lower().str.contains(clave, regex=False)
+        ]
+
+    def situacion_cronograma(fecha_plan, fecha_real, estado):
+        """Misma clasificación de situación que usa el Módulo 5 (control de cronograma)."""
+        def a_fecha(v):
+            f = pd.to_datetime(str(v)[:10], errors="coerce")
+            return None if pd.isna(f) else f.date()
+
+        plan, real = a_fecha(fecha_plan), a_fecha(fecha_real)
+        if estado == "Completada" or real is not None:
+            if plan and real and real > plan:
+                return f"Completada con retraso (+{(real - plan).days} d)", "tarde"
+            return "Completada a tiempo", "ok"
+        if plan is not None:
+            if plan < hoy_asis:
+                return f"Vencida hace {(hoy_asis - plan).days} d", "vencida"
+            dias = (plan - hoy_asis).days
+            if dias == 0:
+                return "Vence hoy", "pronto"
+            if dias <= 7:
+                return f"Vence en {dias} d", "pronto"
+        return "En plazo", "plazo"
+
+    def recortar(lineas, total):
+        """Devuelve el bloque de texto avisando si se recortaron filas."""
+        cuerpo = "\n".join(lineas)
+        if total > len(lineas):
+            cuerpo += f"\n… ({total - len(lineas)} fila(s) más no mostradas)"
+        return cuerpo
+
+    # -----------------------------------------------------
+    # Consultas disponibles para el asistente
+    # -----------------------------------------------------
+    def h_listar_proyectos():
+        if df_proyectos.empty:
+            return "No hay proyectos registrados."
+        lineas = []
+        for r in df_proyectos.itertuples():
+            lineas.append(
+                f"- {r.ID_Proyecto} · {r.Nombre_Proyecto} | estado: {r.Estado_Proyecto} | "
+                f"avance: {num(r.Avance_Pct):.0f}% | prioridad: {texto(r.Prioridad)} | "
+                f"líder: {texto(r.Lider_Proyecto)} | área: {texto(r.Cliente_Area)} | "
+                f"fin planificado: {fecha_corta(r.Fecha_Fin_Planificada)}"
+            )
+        return f"{len(df_proyectos)} proyecto(s) en el portafolio:\n" + "\n".join(lineas)
+
+    def h_detalle_proyecto(proyecto):
+        coincidencias = resolver_proyectos(proyecto)
+        if coincidencias.empty:
+            return f"No encontré ningún proyecto que coincida con «{proyecto}»."
+        if len(coincidencias) > 1:
+            nombres = ", ".join(
+                f"{r.ID_Proyecto} ({r.Nombre_Proyecto})" for r in coincidencias.itertuples()
+            )
+            return f"«{proyecto}» coincide con varios proyectos: {nombres}. Pide al usuario que concrete."
+
+        p = coincidencias.iloc[0]
+        pid = str(p["ID_Proyecto"])
+        planificado = num(p["Presupuesto_Planificado"])
+        ejecutado = num(p["Presupuesto_Ejecutado"])
+        pct = (ejecutado / planificado * 100) if planificado else 0
+
+        tareas_p = df_tareas[df_tareas["ID_Proyecto"].astype(str) == pid]
+        vencidas = sum(
+            1 for _, t in tareas_p.iterrows()
+            if situacion_cronograma(t["Fecha_Planificada"], t["Fecha_Real"], t["Estado"])[1] == "vencida"
+        )
+        pendientes = int((tareas_p["Estado"] != "Completada").sum())
+        riesgos_p = df_riesgos[df_riesgos["ID_Proyecto"].astype(str) == pid]
+        riesgos_activos = riesgos_p[riesgos_p["Estado"].isin(["Abierto", "En mitigación"])]
+
+        return (
+            f"{pid} · {p['Nombre_Proyecto']}\n"
+            f"- Descripción: {texto(p['Descripcion'])}\n"
+            f"- Estado: {p['Estado_Proyecto']} | avance: {num(p['Avance_Pct']):.0f}% | "
+            f"prioridad: {texto(p['Prioridad'])}\n"
+            f"- Líder: {texto(p['Lider_Proyecto'])} | área cliente: {texto(p['Cliente_Area'])} | "
+            f"tecnología: {texto(p['Tecnologia'])}\n"
+            f"- Fechas: inicio {fecha_corta(p['Fecha_Inicio'])}, fin planificado "
+            f"{fecha_corta(p['Fecha_Fin_Planificada'])}, fin real {fecha_corta(p['Fecha_Fin_Real'])}\n"
+            f"- Presupuesto: planificado {eur(planificado)}, ejecutado {eur(ejecutado)} ({pct:.1f}%)\n"
+            f"- Beneficio esperado: {eur(p['Beneficio_Esperado'])}\n"
+            f"- Cronograma: {len(tareas_p)} tareas/hitos, {pendientes} sin completar, {vencidas} vencidas\n"
+            f"- Riesgos: {len(riesgos_p)} registrados, {len(riesgos_activos)} activos"
+        )
+
+    def h_tareas(proyecto=None, situacion=None, responsable=None):
+        datos = df_tareas.copy()
+        if datos.empty:
+            return "No hay tareas ni hitos registrados."
+        etiqueta = "todo el portafolio"
+        if proyecto:
+            coincidencias = resolver_proyectos(proyecto)
+            if coincidencias.empty:
+                return f"No encontré ningún proyecto que coincida con «{proyecto}»."
+            ids = set(coincidencias["ID_Proyecto"].astype(str))
+            datos = datos[datos["ID_Proyecto"].astype(str).isin(ids)]
+            etiqueta = ", ".join(coincidencias["Nombre_Proyecto"].astype(str))
+        if responsable:
+            datos = datos[
+                datos["Nombre_Responsable"].astype(str).str.lower()
+                .str.contains(str(responsable).lower(), regex=False)
+            ]
+
+        filas = []
+        for _, t in datos.iterrows():
+            sit, clave = situacion_cronograma(t["Fecha_Planificada"], t["Fecha_Real"], t["Estado"])
+            filas.append((t, sit, clave))
+
+        if situacion == "pendientes":
+            filas = [f for f in filas if f[2] in ("vencida", "pronto", "plazo")]
+        elif situacion in ("vencida", "pronto", "plazo", "tarde", "ok"):
+            filas = [f for f in filas if f[2] == situacion]
+
+        if not filas:
+            return f"No hay tareas que cumplan ese criterio en {etiqueta}."
+
+        orden = {"vencida": 0, "pronto": 1, "plazo": 2, "tarde": 3, "ok": 4}
+        filas.sort(key=lambda f: (orden.get(f[2], 9), str(f[0]["Fecha_Planificada"])[:10]))
+        lineas = [
+            f"- [{t['ID_Proyecto']}] {t['Tipo']}: {t['Nombre_Tarea']} | responsable: "
+            f"{texto(t['Nombre_Responsable'])} | fecha planificada: "
+            f"{fecha_corta(t['Fecha_Planificada'])} | estado: {t['Estado']} | situación: {sit}"
+            for t, sit, _ in filas[:MAX_FILAS_RESPUESTA]
+        ]
+        return f"{len(filas)} tarea(s)/hito(s) en {etiqueta}:\n" + recortar(lineas, len(filas))
+
+    def h_presupuesto(proyecto):
+        coincidencias = resolver_proyectos(proyecto)
+        if coincidencias.empty:
+            return f"No encontré ningún proyecto que coincida con «{proyecto}»."
+        if len(coincidencias) > 1:
+            nombres = ", ".join(
+                f"{r.ID_Proyecto} ({r.Nombre_Proyecto})" for r in coincidencias.itertuples()
+            )
+            return f"«{proyecto}» coincide con varios proyectos: {nombres}. Pide al usuario que concrete."
+
+        p = coincidencias.iloc[0]
+        pid = str(p["ID_Proyecto"])
+        mov = df_presupuesto[df_presupuesto["ID_Proyecto"].astype(str) == pid]
+        if mov.empty:
+            return (
+                f"{pid} · {p['Nombre_Proyecto']} no tiene movimientos de presupuesto detallados. "
+                f"En la ficha del proyecto figura: planificado {eur(p['Presupuesto_Planificado'])}, "
+                f"ejecutado {eur(p['Presupuesto_Ejecutado'])}."
+            )
+
+        plan = mov[mov["Tipo"] == "Planificado"].groupby("Categoria")["Monto"].sum()
+        real = mov[mov["Tipo"] == "Real"].groupby("Categoria")["Monto"].sum()
+        lineas = []
+        for cat in sorted(set(plan.index) | set(real.index)):
+            pl, re_ = float(plan.get(cat, 0)), float(real.get(cat, 0))
+            if pl == 0:
+                estado = "gasto sin partida planificada"
+            else:
+                consumo = re_ / pl * 100
+                estado = (
+                    f"{consumo:.1f}% consumido"
+                    + (" — EXCEDIDO" if consumo > 100 else " — al límite" if consumo >= 90 else "")
+                )
+            lineas.append(f"- {cat}: planificado {eur(pl)} | real {eur(re_)} | {estado}")
+
+        total_plan, total_real = float(plan.sum()), float(real.sum())
+        pct_total = (total_real / total_plan * 100) if total_plan else 0
+        return (
+            f"Presupuesto de {pid} · {p['Nombre_Proyecto']} ({len(mov)} movimientos)\n"
+            f"TOTAL: planificado {eur(total_plan)} | ejecutado {eur(total_real)} | "
+            f"{pct_total:.1f}% consumido | disponible {eur(total_plan - total_real)}\n"
+            f"Desglose por rubro:\n" + "\n".join(lineas)
+        )
+
+    def h_carga_equipo(semana=None, colaborador=None):
+        if df_salud.empty:
+            return "No hay registros de horas del equipo."
+        datos = df_salud.copy()
+        if semana:
+            datos = datos[datos["Semana"].astype(str).str[:10] == str(semana)[:10]]
+            etiqueta = f"la semana del {str(semana)[:10]}"
+        else:
+            ultima = sorted(datos["Semana"].astype(str).unique())[-1]
+            datos = datos[datos["Semana"].astype(str) == ultima]
+            etiqueta = f"la última semana registrada ({ultima})"
+        if colaborador:
+            datos = datos[
+                datos["Nombre_Colaborador"].astype(str).str.lower()
+                .str.contains(str(colaborador).lower(), regex=False)
+            ]
+        if datos.empty:
+            return f"No hay registros de horas para ese criterio en {etiqueta}."
+
+        agregado = datos.groupby(["ID_Colaborador", "Nombre_Colaborador"]).agg(
+            horas=("Horas_Reales", "sum"),
+            capacidad=("Capacidad_Horas_Semana", "max"),
+            percibida=("Carga_Percibida", "mean"),
+            proyectos=("ID_Proyecto", "nunique"),
+        ).reset_index()
+
+        lineas = []
+        for r in agregado.sort_values("horas", ascending=False).itertuples():
+            cap = num(r.capacidad) or 40
+            pct = num(r.horas) / cap * 100
+            lineas.append(
+                f"- {r.Nombre_Colaborador} ({r.ID_Colaborador}): {num(r.horas):.1f} h de {cap:.0f} h "
+                f"= {pct:.0f}% de saturación — {clasificar_saturacion(pct)[0]} | "
+                f"carga percibida media: {r.percibida:.1f}/5 | proyectos: {r.proyectos}"
+            )
+        return (
+            f"Carga del equipo en {etiqueta} ({len(agregado)} persona(s)).\n"
+            "Umbrales del semáforo: <60% capacidad disponible · 60-80% saludable · "
+            "80-90% seguimiento · 90-95% precaución · ≥95% crítico.\n" + "\n".join(lineas)
+        )
+
+    def h_riesgos(proyecto=None, solo_activos=True, nivel=None):
+        datos = df_riesgos.copy()
+        if datos.empty:
+            return "No hay riesgos registrados."
+        etiqueta = "todo el portafolio"
+        if proyecto:
+            coincidencias = resolver_proyectos(proyecto)
+            if coincidencias.empty:
+                return f"No encontré ningún proyecto que coincida con «{proyecto}»."
+            ids = set(coincidencias["ID_Proyecto"].astype(str))
+            datos = datos[datos["ID_Proyecto"].astype(str).isin(ids)]
+            etiqueta = ", ".join(coincidencias["Nombre_Proyecto"].astype(str))
+        if solo_activos:
+            datos = datos[datos["Estado"].isin(["Abierto", "En mitigación"])]
+        if nivel:
+            datos = datos[datos["Nivel"].astype(str).str.lower() == str(nivel).lower()]
+        if datos.empty:
+            return f"No hay riesgos que cumplan ese criterio en {etiqueta}."
+
+        datos = datos.sort_values("Nivel_Riesgo", ascending=False)
+        lineas = [
+            f"- [{r.ID_Proyecto}] {r.Descripcion_Riesgo} | nivel: {r.Nivel} "
+            f"(probabilidad {r.Probabilidad}/5 × impacto {r.Impacto}/5 = {r.Nivel_Riesgo}) | "
+            f"estado: {r.Estado} | responsable: {texto(r.Nombre_Responsable)} | "
+            f"mitigación: {texto(r.Plan_Mitigacion)}"
+            for r in datos.head(MAX_FILAS_RESPUESTA).itertuples()
+        ]
+        exposicion = int(datos["Nivel_Riesgo"].sum())
+        return (
+            f"{len(datos)} riesgo(s) en {etiqueta} · exposición total (suma P×I): {exposicion}\n"
+            + recortar(lineas, len(datos))
+        )
+
+    def h_alertas(limite=10, origen=None, nivel=None):
+        datos = leer_hoja("Alertas", COLS_ALERTAS)
+        if datos.empty:
+            return "No hay alertas registradas."
+        if origen:
+            datos = datos[datos["Origen"].astype(str).str.lower().str.contains(str(origen).lower(), regex=False)]
+        if nivel:
+            datos = datos[datos["Nivel"].astype(str).str.lower() == str(nivel).lower()]
+        if datos.empty:
+            return "No hay alertas que cumplan ese criterio."
+        datos = datos.sort_values("Fecha_Hora", ascending=False).head(int(limite or 10))
+        lineas = [
+            f"- {r.Fecha_Hora} | {r.Origen} | {r.Nivel} | {texto(r.Mensaje)}"
+            for r in datos.itertuples()
+        ]
+        return f"Últimas {len(datos)} alerta(s):\n" + "\n".join(lineas)
+
+    CONSULTAS = {
+        "listar_proyectos": h_listar_proyectos,
+        "detalle_proyecto": h_detalle_proyecto,
+        "tareas": h_tareas,
+        "presupuesto": h_presupuesto,
+        "carga_equipo": h_carga_equipo,
+        "riesgos": h_riesgos,
+        "alertas": h_alertas,
+    }
+
+    HERRAMIENTAS = [
+        {
+            "name": "listar_proyectos",
+            "description": (
+                "Devuelve el listado completo de proyectos del portafolio con su estado, "
+                "avance, prioridad, líder y fecha de fin planificada. Úsala cuando la pregunta "
+                "sea sobre el portafolio en conjunto o para localizar un proyecto por su nombre."
+            ),
+            "input_schema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "detalle_proyecto",
+            "description": (
+                "Ficha completa de un proyecto: fechas, avance, líder, presupuesto planificado y "
+                "ejecutado, número de tareas pendientes y vencidas, y riesgos activos. Úsala cuando "
+                "pregunten por el estado o la situación general de un proyecto concreto."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "proyecto": {
+                        "type": "string",
+                        "description": "ID (PRJ-001) o parte del nombre del proyecto.",
+                    }
+                },
+                "required": ["proyecto"],
+            },
+        },
+        {
+            "name": "tareas",
+            "description": (
+                "Lista tareas e hitos con su responsable, fecha planificada, estado y situación "
+                "frente a hoy (vencida, por vencer, en plazo, completada). Úsala para cualquier "
+                "pregunta sobre qué está pendiente, qué se ha retrasado o qué vence pronto."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "proyecto": {
+                        "type": "string",
+                        "description": "ID o parte del nombre del proyecto. Omítelo para consultar todo el portafolio.",
+                    },
+                    "situacion": {
+                        "type": "string",
+                        "enum": ["pendientes", "vencida", "pronto", "plazo", "tarde", "ok"],
+                        "description": (
+                            "Filtro de situación: 'pendientes' = todo lo no completado; 'vencida' = pasó "
+                            "su fecha sin completarse; 'pronto' = vence en 7 días o menos; 'plazo' = en "
+                            "plazo; 'tarde' = completada con retraso; 'ok' = completada a tiempo."
+                        ),
+                    },
+                    "responsable": {
+                        "type": "string",
+                        "description": "Nombre o parte del nombre de la persona responsable.",
+                    },
+                },
+            },
+        },
+        {
+            "name": "presupuesto",
+            "description": (
+                "Detalle presupuestario de un proyecto: total planificado frente a ejecutado, "
+                "porcentaje consumido, importe disponible y desglose por rubro señalando los "
+                "rubros excedidos. Úsala para preguntas de dinero, gasto o desviación."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "proyecto": {
+                        "type": "string",
+                        "description": "ID (PRJ-001) o parte del nombre del proyecto.",
+                    }
+                },
+                "required": ["proyecto"],
+            },
+        },
+        {
+            "name": "carga_equipo",
+            "description": (
+                "Saturación del equipo en una semana: horas reales frente a capacidad, porcentaje "
+                "de saturación con su nivel de semáforo, carga percibida media y número de proyectos "
+                "por persona. Úsala para preguntas sobre sobrecarga, disponibilidad o horas."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "semana": {
+                        "type": "string",
+                        "description": "Semana en formato AAAA-MM-DD (lunes). Omítela para la última semana registrada.",
+                    },
+                    "colaborador": {
+                        "type": "string",
+                        "description": "Nombre o parte del nombre de una persona concreta.",
+                    },
+                },
+            },
+        },
+        {
+            "name": "riesgos",
+            "description": (
+                "Riesgos registrados con su probabilidad, impacto, nivel, estado, responsable y plan "
+                "de mitigación, más la exposición total (suma de P×I). Úsala para preguntas sobre "
+                "riesgos, amenazas o exposición."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "proyecto": {
+                        "type": "string",
+                        "description": "ID o parte del nombre del proyecto. Omítelo para todo el portafolio.",
+                    },
+                    "solo_activos": {
+                        "type": "boolean",
+                        "description": "Si es true (por defecto) devuelve solo los abiertos y en mitigación.",
+                    },
+                    "nivel": {
+                        "type": "string",
+                        "enum": ["Alto", "Medio", "Bajo"],
+                        "description": "Filtra por nivel de riesgo.",
+                    },
+                },
+            },
+        },
+        {
+            "name": "alertas",
+            "description": (
+                "Historial de alertas automáticas del sistema (saturación del equipo, desviaciones "
+                "de presupuesto, cronograma y riesgos altos). Úsala cuando pregunten qué avisos hay "
+                "o qué requiere atención."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "limite": {"type": "integer", "description": "Número de alertas a devolver (10 por defecto)."},
+                    "origen": {
+                        "type": "string",
+                        "description": "Filtra por origen: Monitor de Salud, Presupuesto, Cronograma o Riesgos.",
+                    },
+                    "nivel": {
+                        "type": "string",
+                        "enum": ["Crítico", "Precaución", "Informativa"],
+                        "description": "Filtra por nivel de la alerta.",
+                    },
+                },
+            },
+        },
+    ]
+
+    _catalogo = "\n".join(
+        f"- {r.ID_Proyecto}: {r.Nombre_Proyecto} ({r.Estado_Proyecto})"
+        for r in df_proyectos.itertuples()
+    ) or "(sin proyectos registrados)"
+
+    INSTRUCCIONES = f"""Eres el asistente de una plataforma de gestión de proyectos y salud del equipo.
+Respondes al project manager que la utiliza. Hoy es {hoy_asis.strftime('%d/%m/%Y')}.
+
+Cómo trabajas:
+- Todas las cifras que des tienen que salir de las consultas disponibles. Nunca inventes ni
+  estimes datos, y nunca respondas de memoria: si necesitas un dato, consúltalo.
+- Si una consulta no devuelve la información pedida, dilo con claridad en vez de rellenar el hueco.
+- Puedes encadenar varias consultas cuando la pregunta lo requiera (por ejemplo, comparar dos proyectos).
+- Si la pregunta es ambigua o el nombre del proyecto coincide con varios, pide una aclaración breve.
+
+Cómo respondes:
+- En español, directo y breve: primero la respuesta, después el detalle que la sustenta.
+- Usa listas cuando enumeres tareas, riesgos o personas, y da los importes en euros.
+- Menciona el nombre del proyecto, no solo su código.
+- Nada de jerga técnica de la aplicación: no hables de hojas de Excel, columnas ni herramientas.
+
+Proyectos del portafolio:
+{_catalogo}
+
+Umbrales que maneja la plataforma:
+- Saturación del equipo: por debajo del 60% hay capacidad disponible, 60-80% es saludable,
+  80-90% requiere seguimiento, 90-95% es precaución y a partir del 95% es crítico.
+- Presupuesto por rubro: por debajo del 90% consumido va bien, del 90 al 100% está al límite
+  y por encima del 100% está excedido.
+"""
+
+    if "asis_mensajes" not in st.session_state:
+        st.session_state["asis_mensajes"] = []
+
+    cliente_asis = anthropic.Anthropic(api_key=_clave)
+
+    def preguntar_al_asistente(pregunta):
+        """Ciclo del agente: consulta -> ejecuta -> vuelve a consultar hasta responder.
+
+        Devuelve (texto_respuesta, consultas_realizadas). Las consultas se ejecutan
+        aquí, en la aplicación: el modelo solo pide cuáles quiere y lee el resultado.
+        """
+        mensajes = st.session_state["asis_mensajes"]
+        mensajes.append({"role": "user", "content": pregunta})
+        consultas_usadas = []
+
+        for _ in range(MAX_VUELTAS):
+            respuesta = cliente_asis.messages.create(
+                model=MODELO_ASISTENTE,
+                max_tokens=4000,
+                system=INSTRUCCIONES,
+                thinking={"type": "adaptive"},
+                output_config={"effort": ESFUERZO_ASISTENTE},
+                tools=HERRAMIENTAS,
+                messages=mensajes,
+            )
+            mensajes.append({"role": "assistant", "content": respuesta.content})
+
+            if respuesta.stop_reason == "refusal":
+                return ("No puedo responder a esa petición.", consultas_usadas)
+
+            if respuesta.stop_reason != "tool_use":
+                texto = "\n\n".join(b.text for b in respuesta.content if b.type == "text").strip()
+                if respuesta.stop_reason == "max_tokens":
+                    texto += "\n\n_(respuesta cortada por longitud)_"
+                return (texto or "No he podido redactar una respuesta.", consultas_usadas)
+
+            resultados = []
+            for bloque in respuesta.content:
+                if bloque.type != "tool_use":
+                    continue
+                consultas_usadas.append((bloque.name, dict(bloque.input)))
+                try:
+                    salida = CONSULTAS[bloque.name](**bloque.input)
+                    fallo = False
+                except Exception as exc:  # el error vuelve al modelo para que reaccione
+                    salida = f"La consulta falló: {exc}"
+                    fallo = True
+                resultados.append({
+                    "type": "tool_result",
+                    "tool_use_id": bloque.id,
+                    "content": salida,
+                    "is_error": fallo,
+                })
+            mensajes.append({"role": "user", "content": resultados})
+
+        return ("La consulta se ha alargado demasiado. Prueba a preguntarlo de forma más concreta.",
+                consultas_usadas)
+
+    # -----------------------------------------------------
+    # Interfaz de conversación
+    # -----------------------------------------------------
+    col_intro, col_limpiar = st.columns([4, 1])
+    with col_intro:
+        st.caption(
+            "El asistente consulta la misma base de datos que alimenta el tablero directivo, "
+            "así que las cifras que da son las reales del portafolio."
+        )
+    with col_limpiar:
+        if st.button("Nueva conversación", use_container_width=True):
+            st.session_state["asis_mensajes"] = []
+            st.session_state.pop("asis_consultas", None)
+            st.rerun()
+
+    if not st.session_state["asis_mensajes"]:
+        with st.expander("Ejemplos de lo que puedes preguntar", expanded=True):
+            st.markdown(
+                "- ¿Qué tareas tenemos pendientes en el proyecto de Power BI?\n"
+                "- ¿Cuál es el presupuesto ejecutado del CRM y en qué rubro nos estamos pasando?\n"
+                "- ¿Quién está sobrecargado esta semana?\n"
+                "- ¿Qué riesgos altos hay abiertos en el portafolio?\n"
+                "- ¿Qué proyectos van con retraso y de quién dependen?"
+            )
+
+    # Historial: se muestran solo las preguntas y las respuestas redactadas.
+    # Los resultados de las consultas quedan detrás, en el registro de trazabilidad.
+    consultas_por_turno = st.session_state.get("asis_consultas", {})
+    indice_respuesta = 0
+    for mensaje in st.session_state["asis_mensajes"]:
+        contenido = mensaje["content"]
+        if mensaje["role"] == "user":
+            if isinstance(contenido, str):
+                with st.chat_message("user"):
+                    st.markdown(contenido)
+            continue
+        texto = "\n\n".join(
+            b.text for b in contenido
+            if getattr(b, "type", "") == "text" and getattr(b, "text", "").strip()
+        )
+        if not texto:
+            continue
+        with st.chat_message("assistant"):
+            st.markdown(texto)
+            registro = consultas_por_turno.get(indice_respuesta)
+            if registro:
+                with st.expander("Consultas utilizadas para esta respuesta"):
+                    for nombre, argumentos in registro:
+                        detalle = ", ".join(f"{k}={v}" for k, v in argumentos.items()) or "sin filtros"
+                        st.markdown(f"- `{nombre}` ({detalle})")
+        indice_respuesta += 1
+
+    pregunta_usuario = st.chat_input("Escribe tu pregunta sobre el portafolio")
+    if pregunta_usuario:
+        with st.chat_message("user"):
+            st.markdown(pregunta_usuario)
+        marca = len(st.session_state["asis_mensajes"])
+        aviso_error = None
+        with st.chat_message("assistant"):
+            with st.spinner("Consultando los datos del portafolio…"):
+                try:
+                    _, consultas = preguntar_al_asistente(pregunta_usuario)
+                    st.session_state.setdefault("asis_consultas", {})[indice_respuesta] = consultas
+                except anthropic.AuthenticationError:
+                    aviso_error = "La clave de acceso no es válida. Revísala en los secrets de la aplicación."
+                except anthropic.RateLimitError:
+                    aviso_error = "Demasiadas consultas seguidas. Espera unos segundos y vuelve a preguntar."
+                except anthropic.APIConnectionError:
+                    aviso_error = "No hay conexión con el servicio del asistente. Revisa tu red e inténtalo de nuevo."
+                except anthropic.APIStatusError as exc:
+                    aviso_error = f"El servicio del asistente devolvió un error ({exc.status_code}). Inténtalo de nuevo."
+        if aviso_error:
+            # Se descarta la pregunta fallida para no dejar la conversación a medias
+            # (una llamada interrumpida deja mensajes sin su resultado y rompería la siguiente).
+            del st.session_state["asis_mensajes"][marca:]
+            st.error(aviso_error)
+        else:
+            st.rerun()
