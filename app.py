@@ -5255,6 +5255,20 @@ if es_pm:
         st.session_state["asis_mensajes"] = []
         st.session_state.pop("asis_consultas", None)
 
+    def respuestas_redactadas(mensajes):
+        """Cuenta las respuestas que llegaron a texto, que son las que se ven.
+
+        Sirve para emparejar cada respuesta del hilo con las consultas que la
+        sustentan, sin contar los turnos internos de llamada a las consultas.
+        """
+        return sum(
+            1 for mensaje in mensajes
+            if mensaje["role"] == "assistant" and any(
+                getattr(b, "type", "") == "text" and getattr(b, "text", "").strip()
+                for b in mensaje["content"]
+            )
+        )
+
     @st.dialog(NOMBRE_ASISTENTE, width="large")
     def ventana_asistente():
         if MOTOR_ASISTENTE is None:
@@ -5274,70 +5288,75 @@ if es_pm:
             "así que las cifras son las reales del portafolio."
         )
 
+        # Los huecos se reservan ANTES del campo de escritura para que el hilo
+        # quede arriba y el campo abajo, como en cualquier chat. Además permite
+        # decidir si se pintan los ejemplos ya sabiendo si hubo pregunta.
+        zona_ejemplos = st.container()
+        zona_chat = st.container()
+
+        pregunta = st.chat_input("Escribe tu pregunta sobre el portafolio")
+
+        aviso_error = None
+        if pregunta:
+            marca = len(st.session_state["asis_mensajes"])
+            with st.spinner("Consultando los datos del portafolio…"):
+                try:
+                    _, consultas = MOTOR_ASISTENTE(pregunta)
+                except anthropic.AuthenticationError:
+                    aviso_error = "La clave de acceso no es válida. Revísala en los secrets de la aplicación."
+                except anthropic.RateLimitError:
+                    aviso_error = "Demasiadas consultas seguidas. Espera unos segundos y vuelve a preguntar."
+                except anthropic.APIConnectionError:
+                    aviso_error = "No hay conexión con el servicio del asistente. Revisa tu red e inténtalo de nuevo."
+                except anthropic.APIStatusError as exc:
+                    aviso_error = f"El servicio del asistente devolvió un error ({exc.status_code}). Inténtalo de nuevo."
+            if aviso_error:
+                # Se descarta la pregunta fallida para no dejar la conversación
+                # a medias (rompería la siguiente llamada).
+                del st.session_state["asis_mensajes"][marca:]
+            else:
+                st.session_state.setdefault("asis_consultas", {})[
+                    respuestas_redactadas(st.session_state["asis_mensajes"]) - 1
+                ] = consultas
+
+        # Las sugerencias solo acompañan mientras no hay conversación: en cuanto
+        # se pregunta algo desaparecen y dejan sitio al hilo.
         if not st.session_state.get("asis_mensajes"):
-            st.markdown('<div class="asis-pista">Puedes preguntarme cosas como:</div>',
-                        unsafe_allow_html=True)
-            for ejemplo in EJEMPLOS_ASISTENTE:
-                st.markdown(f"- {ejemplo}")
+            with zona_ejemplos:
+                st.markdown('<div class="asis-pista">Puedes preguntarme cosas como:</div>',
+                            unsafe_allow_html=True)
+                for ejemplo in EJEMPLOS_ASISTENTE:
+                    st.markdown(f"- {ejemplo}")
 
         # Historial: solo preguntas y respuestas redactadas. Los resultados de
         # las consultas quedan detrás, en el registro de trazabilidad.
-        consultas_por_turno = st.session_state.get("asis_consultas", {})
-        indice_respuesta = 0
-        for mensaje in st.session_state.get("asis_mensajes", []):
-            contenido = mensaje["content"]
-            if mensaje["role"] == "user":
-                if isinstance(contenido, str):
-                    with st.chat_message("user"):
-                        st.markdown(contenido)
-                continue
-            redactado = "\n\n".join(
-                b.text for b in contenido
-                if getattr(b, "type", "") == "text" and getattr(b, "text", "").strip()
-            )
-            if not redactado:
-                continue
-            with st.chat_message("assistant"):
-                st.markdown(redactado)
-                registro = consultas_por_turno.get(indice_respuesta)
-                if registro:
-                    with st.expander("Consultas utilizadas para esta respuesta"):
-                        for nombre, argumentos in registro:
-                            detalle = ", ".join(f"{k}={v}" for k, v in argumentos.items()) or "sin filtros"
-                            st.markdown(f"- `{nombre}` ({detalle})")
-            indice_respuesta += 1
-
-        pregunta = st.chat_input("Escribe tu pregunta sobre el portafolio")
-        if pregunta:
-            with st.chat_message("user"):
-                st.markdown(pregunta)
-            marca = len(st.session_state["asis_mensajes"])
-            with st.chat_message("assistant"):
-                with st.spinner("Consultando los datos del portafolio…"):
-                    aviso_error = None
-                    try:
-                        redactado, consultas = MOTOR_ASISTENTE(pregunta)
-                    except anthropic.AuthenticationError:
-                        aviso_error = "La clave de acceso no es válida. Revísala en los secrets de la aplicación."
-                    except anthropic.RateLimitError:
-                        aviso_error = "Demasiadas consultas seguidas. Espera unos segundos y vuelve a preguntar."
-                    except anthropic.APIConnectionError:
-                        aviso_error = "No hay conexión con el servicio del asistente. Revisa tu red e inténtalo de nuevo."
-                    except anthropic.APIStatusError as exc:
-                        aviso_error = f"El servicio del asistente devolvió un error ({exc.status_code}). Inténtalo de nuevo."
-                if aviso_error:
-                    # Se descarta la pregunta fallida para no dejar la conversación
-                    # a medias (rompería la siguiente llamada).
-                    del st.session_state["asis_mensajes"][marca:]
-                    st.error(aviso_error)
-                else:
-                    st.session_state.setdefault("asis_consultas", {})[indice_respuesta] = consultas
+        with zona_chat:
+            consultas_por_turno = st.session_state.get("asis_consultas", {})
+            indice_respuesta = 0
+            for mensaje in st.session_state.get("asis_mensajes", []):
+                contenido = mensaje["content"]
+                if mensaje["role"] == "user":
+                    if isinstance(contenido, str):
+                        with st.chat_message("user"):
+                            st.markdown(contenido)
+                    continue
+                redactado = "\n\n".join(
+                    b.text for b in contenido
+                    if getattr(b, "type", "") == "text" and getattr(b, "text", "").strip()
+                )
+                if not redactado:
+                    continue
+                with st.chat_message("assistant"):
                     st.markdown(redactado)
-                    if consultas:
+                    registro = consultas_por_turno.get(indice_respuesta)
+                    if registro:
                         with st.expander("Consultas utilizadas para esta respuesta"):
-                            for nombre, argumentos in consultas:
+                            for nombre, argumentos in registro:
                                 detalle = ", ".join(f"{k}={v}" for k, v in argumentos.items()) or "sin filtros"
                                 st.markdown(f"- `{nombre}` ({detalle})")
+                indice_respuesta += 1
+            if aviso_error:
+                st.error(aviso_error)
 
         if st.session_state.get("asis_mensajes"):
             st.button("Nueva conversación", on_click=limpiar_conversacion,
